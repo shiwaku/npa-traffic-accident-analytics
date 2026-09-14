@@ -1,40 +1,88 @@
 # npa-traffic-accident-analytics
 
-警察庁交通事故統計オープンデータの集計・可視化基盤。
+警察庁交通事故統計オープンデータ（2019〜2024年、1,895,275件）を Cloudflare R2 上の
+GeoParquet として公開し、Claude Code との対話で集計・可視化する。
 
-変換済みデータ（GeoParquet）を Cloudflare R2 に配置し、ブラウザ上の DuckDB-WASM が
-HTTP Range リクエストで必要な列だけを取得しながら集計する。サーバ側にデータベースや
-API を持たず、静的ファイル配信のみで完結する。
+サーバもデータベースもWebアプリも持たない。**R2 上のファイル1つと `CLAUDE.md` だけ**で成立する。
 
-- データ変換は前段リポジトリ [npa-traffic-accident-converter](../npa-traffic-accident-converter) が担当
-- 個票の地図表示は同リポジトリの viewer（PMTiles）が担当
-- 本リポジトリは**集計値の算出と閲覧**のみを扱う
+```
+「生活道路の若年層の事故件数の経年推移」
+   ↓
+Claude Code ── CLAUDE.md の定義を読んで SQL を組み立てる
+   ↓
+DuckDB + httpfs ── HTTP Range で必要な列だけ取得（約4MB）
+   ↓
+Cloudflare R2 / shi-works.com
+   ↓
+表（ターミナル）/ グラフ・地図（Artifact）
+```
 
-## 状態
+## データ
 
-設計フェーズ。実装は未着手。
+```
+https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet
+```
+
+| | |
+|---|---|
+| 行数 | 1,895,275（本票、1行＝1事故） |
+| サイズ | 96.6 MB（zstd-9、row group 131,072行 × 15） |
+| 形式 | GeoParquet 1.0.0（EPSG:4326） |
+
+96.6 MB のうち、集計で実際に転送されるのは約4MB。Parquet の列指向構造により
+`SELECT` した列の Range リクエストだけが飛ぶ。年を絞ると 0.84MB まで下がる。
+
+```python
+import duckdb
+URL = 'https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet'
+con = duckdb.connect()
+con.execute("INSTALL httpfs; LOAD httpfs;")
+con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
+```
+
+実測: ビュー作成 1.33秒 / 全6年の集計 2.05秒。
 
 ## ドキュメント
 
 | | |
 |---|---|
-| [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の根拠、データ仕様、UI構成、指標定義 |
+| [CLAUDE.md](CLAUDE.md) | **指標・ディメンション定義の正典。集計前に必読** |
+| [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の根拠、実測値、採らなかった方式 |
 
-## 方式の要点
+`CLAUDE.md` には、このデータを正しく集計するために不可欠な知識が入っている。
 
-96.6 MB の Parquet に対して、生活道路×若年層の6年分の集計を実行したときの実測値:
+- 生活道路の定義（どのコードを含めるかで結果が約2倍動く）
+- 年齢は7区分の年齢層コードであり「10代の事故」は原理的に集計できないこと
+- 当事者A/Bが過失の重さによる区分で、被害者区分ではないこと
+- 年齢と当事者種別を同一当事者でペア判定する必要があること
+- 資料年次と発生年の違い（最新年が約3%過少になる）
+- **コード表のラベルが全角ハイフンマイナス U+FF0D と全角チルダ U+FF5E を使っており、
+  似た別文字を混ぜるとエラーにならず0件が返ること**
+
+## データ更新
+
+```bash
+# 前段リポジトリで変換（新年次追加時）
+cd ../npa-traffic-accident-converter
+python -m converter --all --merge && ./export_geo.sh
+
+# 資料年次の付与 + 配信向け最適化
+cd ../npa-traffic-accident-analytics
+python pipeline/build_parquet.py --verify
+
+# R2 へ
+aws s3 cp output/honhyo_2019-2024.parquet \
+  s3://shi-works/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet \
+  --profile r2-shiworks \
+  --content-type application/vnd.apache.parquet \
+  --cache-control "public, max-age=31536000, immutable"
+```
+
+## 関連リポジトリ
 
 | | |
 |---|---|
-| 実転送量 | 4.07 MB（ファイル全体の 4.2%） |
-| HTTPリクエスト数 | 62 |
-| 所要時間 | 0.91秒 |
-
-年を1年に絞ると 0.84 MB / 0.05秒。Parquet の列指向構造と row group 統計により、
-クエリに必要な部分だけが転送される。Cloudflare R2 は egress 無料のため、
-実質的な運用コストはゼロ。
-
-詳細は [docs/DESIGN.md](docs/DESIGN.md) の 2章を参照。
+| [npa-traffic-accident-converter](../npa-traffic-accident-converter) | 警察庁CSV → 変換 → GeoParquet。個票の地図ビューア（PMTiles）も同梱 |
 
 ## データ出典
 
