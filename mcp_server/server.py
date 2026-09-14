@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 import duckdb
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vocab  # noqa: E402
@@ -181,6 +182,8 @@ server = MCPServer(
 
 @server.tool(
     title="集計する",
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                                idempotent_hint=True, open_world_hint=False),
     description="""交通事故を条件で絞り込んで集計する。主にこれを使う。
 
 引数はラベル文字列ではなくコード値で指定する(例: 車道幅員なら '01','02','11')。
@@ -191,6 +194,24 @@ road_width を直接指定するより意図が明確になる。
 
 年齢と当事者種別を同時に指定すると、同一当事者でのペア判定になる。
 party_scope='either' なら「AまたはBがその年齢かつその種別」の事故を行単位で数える。
+
+よく使うコードは以下。これで足りる場合 list_values を呼ぶ必要はない。
+
+  party_age    01=0〜24歳  25=25〜34  35=35〜44  45=45〜54
+               55=55〜64   65=65〜74  75=75歳以上  00=不明
+  party_type   61=歩行者  51=自転車  52=電動アシスト自転車
+               36=原付  35=原付二種  31〜34=自動二輪
+               03=乗用車普通  04=軽自動車  01=乗用車大型  02=乗用車中型
+               13=貨物普通  14=貨物軽  43=特定小型原付(2024〜)
+  accident_type 01=人対車両  21=車両相互  41=車両単独  61=列車
+  day_night    昼は 11(明) 12(昼) 13(暮)、夜は 21(暮) 22(夜) 23(明) の6区分。
+               「昼間」なら ['11','12','13']、「夜間」なら ['21','22','23'] を渡す
+
+  group_by     year, month, prefecture, police_station, road_width, road_type,
+               road_shape, zone, accident_type, accident_content, day_night,
+               weather, age_a, age_b, party_type_a, party_type_b
+
+都道府県は prefecture に日本語名で渡す（「東京都」「東京」「北海道」いずれも可）。
 
 順序は既定で、年や月を含むときはキー順、それ以外は件数の多い順。
 limit で上位を絞るときは件数順が使われるので順位を誤らない。
@@ -315,6 +336,8 @@ def aggregate(
 
 @server.tool(
     title="コード値を調べる",
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                                idempotent_hint=True, open_world_hint=False),
     description="""指定した項目の、有効なコード値とラベルと実データ件数を返す。
 aggregate に渡すコードが分からないときに使う。
 
@@ -361,6 +384,8 @@ def list_values(field: str) -> dict[str, Any]:
 
 @server.tool(
     title="SQLを実行する",
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                                idempotent_hint=True, open_world_hint=False),
     description="""aggregate で表現できない集計を行うための逃げ道。読み取り専用。
 
 テーブル名は honhyo。列名は日本語で、年齢（当事者A）のように全角括弧を含む。
