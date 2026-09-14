@@ -22,10 +22,13 @@ import unicodedata
 from typing import Any, Literal
 
 import duckdb
+from mcp.server.apps import Apps, client_supports_apps
 from mcp.server.mcpserver import MCPServer
-from mcp.types import ToolAnnotations
+from mcp.server.mcpserver.context import Context
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dashboard  # noqa: E402
 import vocab  # noqa: E402
 
 PARQUET_URL = os.environ.get(
@@ -146,6 +149,217 @@ def _quote(values: list[str]) -> str:
     return ", ".join("'" + v.replace("'", "''") + "'" for v in values)
 
 
+def _expand_prefecture(prefecture: list[str]) -> list[str]:
+    """利用者の書いた都道府県名を、元データの51種の表記へ展開する。"""
+    expanded: list[str] = []
+    for p in prefecture:
+        hit = _pref_map.get(p) or _pref_map.get(_repair(p)[0])
+        if not hit:
+            raise ValueError(f"未知の都道府県 '{p}'。list_values('prefecture') を参照")
+        expanded.extend(hit)
+    return expanded
+
+
+# ── MCP Apps 拡張 ───────────────────────────────────────────────────────
+# 拡張はサーバーの構築時に取り込まれるため、ui:// リソースの登録と
+# @apps.tool の定義は MCPServer(...) より前に置く必要がある。
+#
+# ビューは Claude Desktop / claude.ai のようなサンドボックスiframeを持つ
+# ホストでのみ描画される。ターミナルの Claude Code では描画されないが、
+# ツール自体は同じ数字を返すので、集計として壊れることはない。
+
+apps = Apps()
+
+apps.add_html_resource(
+    dashboard.RESOURCE_URI,
+    dashboard.load_html(),
+    name="seikatsu_dashboard",
+    title="生活道路ダッシュボード",
+    description="生活道路（車道幅員5.5m未満）の事故の経年推移。strict/broad をその場で切り替えられる",
+    prefers_border=True,
+)
+
+# 0〜24歳の歩行者・自転車。自転車は電動アシストを含み、特定小型原付(43)は別区分として含めない
+_YOUNG_AGE = vocab.AGE["01"]
+_WALK_BIKE = vocab.PARTY_TYPE["61"] + vocab.PARTY_TYPE["51"] + vocab.PARTY_TYPE["52"]
+
+
+def _young_walk_bike_sql() -> str:
+    """当事者AまたはBが「0〜24歳の歩行者・自転車」である条件。
+
+    年齢と種別は同一当事者でペア判定する。A側・B側を別々に数えて足すと、
+    双方が該当する事故を二重に数えるため、FILTER に入れて行単位で数える。
+    """
+    age, kind = _quote(_YOUNG_AGE), _quote(_WALK_BIKE)
+    return "(" + " OR ".join(
+        f'("年齢（当事者{s}）" IN ({age}) AND "当事者種別（当事者{s}）" IN ({kind}))'
+        for s in ("A", "B")) + ")"
+
+
+def _summary_md(p: dict[str, Any]) -> str:
+    """モデルに渡すテキスト。ビューが描画されない環境ではこれがそのまま答えになる。
+
+    構造化データ(structuredContent)をそのまま会話に流すとJSONの壁になるので、
+    読める表と注記だけを渡す。ビューは structuredContent を見るので影響しない。
+    """
+    t = p["totals"]
+    rows = "\n".join(
+        f'| {r["年"]} | {r["件数"]:,} | {r["指数"]:.0f} | {r["構成比"]*100:.1f}% | '
+        f'{r["死亡事故"]:,} | {r["若年歩行者自転車"]:,} | {r["ゾーン30"]:,} |'
+        for r in p["years"])
+    return (
+        f'## 生活道路の事故\n\n'
+        f'{p["scope"]}／{p["definition"]["label"]}\n\n'
+        f'| 年 | 件数 | 指数 | 全事故比 | 死亡事故 | 0〜24歳 歩行者・自転車 | ゾーン30 |\n'
+        f'|---:|---:|---:|---:|---:|---:|---:|\n{rows}\n\n'
+        f'期間合計 {t["件数"]:,}件（全事故 {t["全事故件数"]:,}件の {t["構成比"]*100:.1f}%）／'
+        f'死亡事故 {t["死亡事故"]:,}件・死者 {t["死者数"]:,}人／'
+        f'0〜24歳の歩行者・自転車が関与 {t["若年歩行者自転車"]:,}件（{t["若年構成比"]*100:.1f}%）／'
+        f'ゾーン30内 {t["ゾーン30"]:,}件（{t["ゾーン30構成比"]*100:.1f}%）\n\n'
+        + "\n".join("- " + n for n in p["notes"])
+        + f'\n\n<details><summary>SQL</summary>\n\n```sql\n{p["sql"]}\n```\n</details>'
+    )
+
+
+_SEIKATSU_DESC = {
+    "strict": "交差点は交差する両方の道路が5.5m未満のものだけを数える。"
+              "broad にすると件数はほぼ倍増する",
+    "broad": "片側のみ5.5m未満の交差点も含める。"
+             "生活道路から幹線に出る出会い頭の事故がここに入る。strict のほぼ2倍になる",
+}
+
+
+@apps.tool(
+    resource_uri=dashboard.RESOURCE_URI,
+    visibility=["model", "app"],
+    title="生活道路ダッシュボード",
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                                idempotent_hint=True, open_world_hint=False),
+    description="""生活道路（車道幅員5.5m未満）の事故を年次別にまとめ、対話的なダッシュボードとして表示する。
+
+「生活道路の事故はどうなっているか」「生活道路の推移を見せて」のような
+概況の問いにはこれを使う。aggregate より先に試してよい。
+
+全事故（母数）を同じクエリで一緒に数えるので、生活道路の減少が全体の減少と
+同じなのか、それより速い/遅いのかがそのまま読める。
+
+seikatsu の strict / broad は件数を約2倍動かす。既定は strict。
+ビュー上のトグルでも切り替えられるので、迷ったら strict のまま出して利用者に選ばせてよい。
+
+返り値の years に年次別の件数・指数・構成比、totals に期間合計、notes に
+読むときの注意、sql に実行したSQLが入る。ビューが描画されない環境でも
+この数字だけで表を書ける。""",
+)
+def seikatsu_dashboard(
+    ctx: Context,
+    seikatsu: Literal["strict", "broad"] = "strict",
+    year_from: int = 2019,
+    year_to: int = 2024,
+    prefecture: list[str] | None = None,
+) -> CallToolResult:
+    c = con()
+    if year_from > year_to:
+        raise ValueError("year_from が year_to より大きい")
+
+    # ビューが描画されるのは、クライアントが io.modelcontextprotocol/ui を
+    # ネゴシエートしたときだけ。していない相手には数字だけを返し、注記で伝える。
+    ui_ok = client_supports_apps(ctx)
+
+    width_labels = _codes_to_labels(SEIKATSU[seikatsu], vocab.ROAD_WIDTH, "road_width")
+    w = f'"車道幅員" IN ({_quote(width_labels)})'
+    young = _young_walk_bike_sql()
+
+    # 年次は資料年次(計上年)で固定する。発生年で数えると最新年が約3%過少に出て、
+    # 実際の減少と区別がつかなくなるため、推移を見るこのビューでは選ばせない。
+    where = [f'"資料年次" >= {int(year_from)}', f'"資料年次" <= {int(year_to)}']
+    notes: list[str] = []
+    scope_pref = "全国"
+    if prefecture:
+        expanded = _expand_prefecture(prefecture)
+        where.append(f'"都道府県名" IN ({_quote(expanded)})')
+        scope_pref = "・".join(dict.fromkeys(
+            "北海道" if p.startswith("北海道") else p for p in expanded))
+        if any(p.startswith("北海道") for p in expanded):
+            notes.append("北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)のため合算した")
+
+    sql = (
+        'SELECT "資料年次" AS 年,\n'
+        "       count(*) AS 全事故件数,\n"
+        f"       count(*) FILTER (WHERE {w}) AS 件数,\n"
+        f'       sum(CAST("死者数" AS INTEGER)) FILTER (WHERE {w}) AS 死者数,\n'
+        f'       sum(CAST("負傷者数" AS INTEGER)) FILTER (WHERE {w}) AS 負傷者数,\n'
+        f"       count(*) FILTER (WHERE {w} AND \"事故内容\" = '死亡事故') AS 死亡事故,\n"
+        f"       count(*) FILTER (WHERE {w} AND {young}) AS 若年歩行者自転車,\n"
+        f"       count(*) FILTER (WHERE {w} AND \"ゾーン規制\" = 'ゾーン30') AS ゾーン30\n"
+        "FROM honhyo\n"
+        "WHERE " + "\n  AND ".join(where) + "\n"
+        "GROUP BY 1\n"
+        "ORDER BY 1"
+    )
+
+    cur = c.execute(sql)
+    cols = [d[0] for d in cur.description]
+    years = [dict(zip(cols, r)) for r in cur.fetchall()]
+    if not years:
+        raise ValueError(f"{year_from}〜{year_to}年に該当する行がない。年やprefectureの指定を確認すること")
+
+    base, base_all = years[0]["件数"] or 1, years[0]["全事故件数"] or 1
+    for r in years:
+        for k in ("件数", "全事故件数", "死者数", "負傷者数", "死亡事故", "若年歩行者自転車", "ゾーン30"):
+            r[k] = int(r[k] or 0)
+        r["指数"] = round(r["件数"] / base * 100, 1)
+        r["全事故指数"] = round(r["全事故件数"] / base_all * 100, 1)
+        r["構成比"] = round(r["件数"] / r["全事故件数"], 5) if r["全事故件数"] else 0.0
+        r["若年構成比"] = round(r["若年歩行者自転車"] / r["件数"], 5) if r["件数"] else 0.0
+
+    totals = {k: sum(r[k] for r in years) for k in
+              ("全事故件数", "件数", "死者数", "負傷者数", "死亡事故", "若年歩行者自転車", "ゾーン30")}
+    n = totals["件数"] or 1
+    totals["構成比"] = round(totals["件数"] / (totals["全事故件数"] or 1), 5)
+    totals["若年構成比"] = round(totals["若年歩行者自転車"] / n, 5)
+    totals["ゾーン30構成比"] = round(totals["ゾーン30"] / n, 5)
+
+    notes.append(f"生活道路 = 車道幅員5.5m未満。{seikatsu}（{_SEIKATSU_DESC[seikatsu]}）")
+    notes.append("資料年次(計上年)で集計した。各年の全事故件数は警察庁公表値と一致する")
+    notes.append("実数だけで語らないこと。全事故の指数(破線)と比べて初めて意味を持つ。"
+                 "2020年はコロナ禍で全体が前年比19%減している")
+    notes.append("0〜24歳は年齢層コードの最小区分。10代のみ・20代のみの切り出しはできない")
+    notes.append("歩行者・自転車は当事者AまたはBで年齢と種別をペア判定し、行単位で1件と数えた"
+                 "(二重計上なし)。自転車は駆動補助機付を含み、特定小型原付は含まない")
+    if min(r["死亡事故"] for r in years) < 50:
+        notes.append("死亡事故は年あたり数十件規模。ここからさらに絞るとトレンドとしては読めない")
+    notes.append("ゾーン30の件数の増減から規制の効果は判定できない。ゾーン30の指定区域自体が"
+                 "年々拡大しているため、母数が動いている")
+    notes.append("ゾーン規制は「ゾーン30」「規制なし」の2値しかない。ハンプ・狭さく等を伴う"
+                 "ゾーン30プラス(2021年度〜)は区別できず、物理デバイスの有無も本票にはない")
+    if not ui_ok:
+        notes.append("このクライアントは MCP Apps を有効にしていないため、ダッシュボードは"
+                     "描画されない。上の years / totals をそのまま表にして示すこと")
+
+    payload = {
+        "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
+        "definition": {
+            "seikatsu": seikatsu,
+            "label": "strict（交差点は両方が5.5m未満）" if seikatsu == "strict"
+                     else "broad（片側のみ5.5m未満の交差点を含む）",
+            "description": _SEIKATSU_DESC[seikatsu],
+            "road_width_labels": width_labels,
+        },
+        "args": {"seikatsu": seikatsu, "year_from": year_from,
+                 "year_to": year_to, "prefecture": prefecture},
+        "years": years,
+        "totals": totals,
+        "notes": notes,
+        "sql": sql,
+    }
+    # content はモデルが読む表、structured_content はビューが読むデータ。
+    # 分けないと、ビューが描画されたときに同じ数字が二重に会話へ流れる。
+    return CallToolResult(
+        content=[TextContent(type="text", text=_summary_md(payload))],
+        structured_content=payload,
+    )
+
+
 server = MCPServer(
     name="npa-traffic-accident",
     title="警察庁交通事故統計",
@@ -175,8 +389,12 @@ server = MCPServer(
 6. 本票は**人身事故のみ**。物損事故は含まれない。
    死亡事故は全期間で16,266件しかなく、細かく絞ると年数件になりトレンドを読めない。
 
+7. 生活道路の概況を聞かれたら seikatsu_dashboard を使う。全事故(母数)を同時に数え、
+   対応ホストではグラフ付きのビューが出る。細かい切り口が要るときだけ aggregate に降りる。
+
 実数の増減だけで語らないこと。2020年はコロナ禍で全体件数が前年比19%減しており、
 母数の変化を無視すると傾向を読み誤る。構成比や指数を併せて見ること。""",
+    extensions=[apps],
 )
 
 
@@ -274,12 +492,7 @@ def aggregate(
         notes.append("発生年で集計した。最新年は翌年ファイルに計上される分が欠けるため約3%過少に出る")
 
     if prefecture:
-        expanded: list[str] = []
-        for p in prefecture:
-            hit = _pref_map.get(p) or _pref_map.get(_repair(p)[0])
-            if not hit:
-                raise ValueError(f"未知の都道府県 '{p}'。list_values('prefecture') を参照")
-            expanded.extend(hit)
+        expanded = _expand_prefecture(prefecture)
         where.append(f'"都道府県名" IN ({_quote(expanded)})')
         if any(p.startswith("北海道") for p in expanded) and len(expanded) > 1:
             notes.append("北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)のため合算した")

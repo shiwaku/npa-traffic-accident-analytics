@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>生活道路の事故</title>
+</head>
+<body>
+  <main class="main">
+    <header class="head">
+      <div>
+        <h1>生活道路の事故</h1>
+        <p class="scope" id="scope">読み込み中…</p>
+      </div>
+      <div class="switch" role="group" aria-label="生活道路の定義">
+        <button type="button" id="btn-strict" data-v="strict" aria-pressed="true">strict</button>
+        <button type="button" id="btn-broad" data-v="broad" aria-pressed="false">broad</button>
+      </div>
+    </header>
+
+    <p class="defn" id="defn"></p>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="block">
+      <h2 id="chart-cap">件数（棒）と指数（線）</h2>
+      <div id="chart" role="img" aria-labelledby="chart-cap"></div>
+      <div class="legend">
+        <span><i class="sw-road"></i>生活道路 件数／指数</span>
+        <span><i class="sw-total"></i>全事故 指数（母数）</span>
+      </div>
+    </section>
+
+    <section class="block scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>年</th><th>件数</th><th>指数</th><th>全事故比</th>
+            <th>死亡事故</th><th>死者数</th><th>0〜24歳 歩行者・自転車</th><th>ゾーン30</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+
+    <ul class="notes" id="notes"></ul>
+
+    <details>
+      <summary>実行したSQL</summary>
+      <pre id="sql"></pre>
+    </details>
+
+    <p class="err" id="err" hidden></p>
+  </main>
+  <script type="module" src="/src/mcp-app.ts"></script>
+</body>
+</html>

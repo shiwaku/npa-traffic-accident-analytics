@@ -1,0 +1,117 @@
+/* ホストが渡す CSS 変数を使い、渡されなかった分は自前の既定値に落とす。
+   変数名は spec.types.ts の McpUiStyleVariableKey に合わせてある。 */
+:root {
+  --color-background-primary: light-dark(#ffffff, #1f1e1d);
+  --color-background-secondary: light-dark(#f5f4f2, #262523);
+  --color-background-tertiary: light-dark(#ecebe7, #302f2c);
+  --color-text-primary: light-dark(#1f1e1d, #f5f4f2);
+  --color-text-secondary: light-dark(#5c5b57, #b4b2ad);
+  --color-text-tertiary: light-dark(#84837e, #8c8a85);
+  --color-text-danger: light-dark(#b4331f, #e8705c);
+  --color-border-primary: light-dark(#dededa, #3b3a37);
+  --color-border-secondary: light-dark(#ecebe7, #302f2c);
+  --font-sans: ui-sans-serif, system-ui, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --border-radius-sm: 6px;
+  --border-radius-md: 8px;
+
+  /* ビュー固有。ホストは渡してこないので必ず自前で持つ */
+  --series-road: light-dark(#1d5fa8, #5d9ee0);
+  --series-total: light-dark(#94a4b4, #6d7d8d);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.main { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+.head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 15px; font-weight: var(--font-weight-semibold); margin: 0; letter-spacing: .01em; }
+h2 { font-size: 11px; font-weight: var(--font-weight-medium); color: var(--color-text-tertiary); margin: 0 0 6px; }
+.scope { margin: 2px 0 0; font-size: 11.5px; color: var(--color-text-tertiary); }
+
+.switch { display: inline-flex; padding: 2px; gap: 2px;
+  background: var(--color-background-tertiary); border-radius: var(--border-radius-md); }
+.switch button {
+  font: var(--font-weight-medium) 12px/1.5 var(--font-sans);
+  padding: 4px 12px; border: 0; border-radius: var(--border-radius-sm);
+  background: transparent; color: var(--color-text-secondary); cursor: pointer;
+}
+.switch button[aria-pressed="true"] {
+  background: var(--color-background-primary); color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+.switch button:disabled { cursor: progress; opacity: .55; }
+.switch button:focus-visible { outline: 2px solid var(--series-road); outline-offset: 2px; }
+
+.defn {
+  margin: 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.5;
+  color: var(--color-text-secondary); background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md); border-left: 2px solid var(--series-road);
+}
+.defn b { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.kpi { padding: 8px 10px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); }
+.kpi .k { font-size: 10.5px; color: var(--color-text-tertiary); }
+.kpi .v { font-size: 18px; font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums; line-height: 1.25; letter-spacing: -.01em; }
+.kpi .s { font-family: var(--font-mono); font-size: 10px;
+  color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.g { stroke: var(--color-border-secondary); stroke-width: 1; }
+.ax { fill: var(--color-text-tertiary); font-size: 9.5px; }
+.yr { fill: var(--color-text-tertiary); font-size: 10px; }
+.base { stroke: var(--series-total); stroke-width: 1; stroke-dasharray: 2 4; }
+.bar { fill: var(--series-road); opacity: .18; }
+.l-road { fill: none; stroke: var(--series-road); stroke-width: 2;
+  stroke-linejoin: round; stroke-linecap: round; }
+.l-total { fill: none; stroke: var(--series-total); stroke-width: 2;
+  stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 5 4; }
+.d-road { fill: var(--color-background-primary); stroke: var(--series-road); stroke-width: 2; }
+.vlab { fill: var(--series-road); font-size: 10px; font-weight: var(--font-weight-medium); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px;
+  font-size: 11px; color: var(--color-text-secondary); }
+.legend i { display: inline-block; width: 14px; height: 3px;
+  border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.sw-road { background: var(--series-road); }
+.sw-total { background: var(--series-total); }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 7px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid var(--color-border-secondary); }
+th { font-weight: var(--font-weight-medium); color: var(--color-text-tertiary); font-size: 10.5px; }
+td:first-child, th:first-child { text-align: left; font-family: var(--font-mono); }
+tbody tr:last-child td { border-bottom: 0; }
+td .pc { color: var(--color-text-tertiary); font-size: 10px; }
+
+.notes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.notes li { padding-left: 13px; position: relative; font-size: 11px;
+  color: var(--color-text-secondary); line-height: 1.5; }
+.notes li::before { content: "\203B"; position: absolute; left: 0; color: var(--color-text-tertiary); }
+
+details summary { font-size: 11px; color: var(--color-text-tertiary); cursor: pointer; }
+details summary:focus-visible { outline: 2px solid var(--series-road); outline-offset: 3px; }
+pre { margin: 6px 0 0; padding: 9px; font-family: var(--font-mono); font-size: 10.5px;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+  background: var(--color-background-secondary); border-radius: var(--border-radius-sm);
+  color: var(--color-text-secondary); }
+
+.err { color: var(--color-text-danger); font-size: 12px; margin: 0; }
+.busy { opacity: .45; transition: opacity .15s; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
