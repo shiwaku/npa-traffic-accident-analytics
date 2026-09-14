@@ -47,7 +47,9 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | | |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | **指標・ディメンション定義の正典。集計前に必読** |
-| [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の根拠、実測値、採らなかった方式 |
+| [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | **いま動いているものの仕組み。質問1つで何が起きるか** |
+| [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
+| [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 
 `CLAUDE.md` には、このデータを正しく集計するために不可欠な知識が入っている。
 
