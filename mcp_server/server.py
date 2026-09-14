@@ -409,11 +409,29 @@ def main() -> None:
     ap.add_argument("--http", action="store_true", help="streamable-http で待ち受ける")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--allow-host", action="append", default=[],
+                    help="Hostヘッダを許可するホスト名。トンネルや独自ドメインで公開するとき必要。"
+                         "複数指定可。'*' で検証を無効化する(公開時は非推奨)")
     args = ap.parse_args()
     if args.http:
-        server.settings.host = args.host
-        server.settings.port = args.port
-        server.run(transport="streamable-http")
+        import uvicorn
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        # DNSリバインディング対策で Host ヘッダが検証される。既定は localhost のみ許可。
+        # トンネルや独自ドメイン越しに公開するときは、そのホスト名を渡す必要がある。
+        hosts = [f"127.0.0.1:{args.port}", f"localhost:{args.port}", *args.allow_host]
+        sec = TransportSecuritySettings(
+            enable_dns_rebinding_protection="*" not in args.allow_host,
+            allowed_hosts=hosts,
+            allowed_origins=["*"] if "*" in args.allow_host
+            else [f"https://{h}" for h in args.allow_host],
+        )
+        con()  # 起動時に接続を張り、Parquetのフッタを読んでおく
+        print(f"MCP endpoint: http://{args.host}:{args.port}/mcp", file=sys.stderr)
+        if args.allow_host:
+            print(f"allowed hosts: {args.allow_host}", file=sys.stderr)
+        uvicorn.run(server.streamable_http_app(transport_security=sec),
+                    host=args.host, port=args.port, log_level="warning")
     else:
         server.run(transport="stdio")
 
