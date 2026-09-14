@@ -136,6 +136,7 @@ Cache-Control は `public, max-age=31536000, immutable`。
 | バケット | `shi-works`（既存） |
 | カスタムドメイン | `shi-works.com`（設置済み） |
 | プレフィックス慣習 | `<形式>/<リポジトリ名>/<ファイル名>` |
+| 同一バケット内の関連物 | `pmtiles/npa-traffic-accident/`（viewer が参照。converter の PR #15 で xserver から移設済み） |
 | 認証 | ローカル aws プロファイル `r2-shiworks`、GitHub Actions は `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` |
 
 ### 4.2 検証済みの配信特性
@@ -328,6 +329,7 @@ OSM・標高・気象などで事故データを補強する段階に進むな�
 
 | # | 項目 | 備考 |
 |---|---|---|
-| 1 | PMTiles を R2 に移設するか | 620MB。現在は xserver。移設すると配信先が一本化される |
-| 2 | グラフ描画の方式 | Artifact 内で inline SVG を組むか、CDN許可済みライブラリを使うか |
-| 3 | 前段リポジトリへの `資料年次` 列の追加 | 恒久対応。出力CSVの列が増えるため README とリリースノートの追従が要る |
+| 1 | **常設ホスティング先** | 現在は quick tunnel で URL が毎回変わる。常時稼働マシンがあれば Cloudflare 名前付きトンネル（無料・URL固定）、無ければ Fly.io。[HOW_IT_WORKS.md](HOW_IT_WORKS.md) 6章 |
+| 2 | **公開時の認証** | URLに秘密文字列を入れる簡易版か、OAuth か。社内共有が目的なら前者で足りる |
+| 3 | グラフ描画の方式 | Artifact 内で inline SVG を組むか、CDN許可済みライブラリを使うか |
+| 4 | 前段リポジトリへの `資料年次` 列の追加 | 恒久対応。出力CSVの列が増えるため README とリリースノートの追従が要る |
