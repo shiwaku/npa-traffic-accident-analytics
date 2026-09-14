@@ -28,6 +28,7 @@ from mcp.server.mcpserver.context import Context
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import accident_map  # noqa: E402
 import dashboard  # noqa: E402
 import vocab  # noqa: E402
 
@@ -160,6 +161,88 @@ def _expand_prefecture(prefecture: list[str]) -> list[str]:
     return expanded
 
 
+def _filters(
+    *,
+    year_col: str = '"資料年次"',
+    year_from: int | None = None,
+    year_to: int | None = None,
+    seikatsu: str | None = None,
+    road_width: list[str] | None = None,
+    prefecture: list[str] | None = None,
+    party_age: list[str] | None = None,
+    party_type: list[str] | None = None,
+    party_scope: str = "either",
+    accident_type: list[str] | None = None,
+    day_night: list[str] | None = None,
+    fatal_only: bool = False,
+    zone30_only: bool = False,
+) -> tuple[list[str], list[str], str]:
+    """絞り込み条件を WHERE 句のリストに組み立てる。aggregate と accident_map で共用する。
+
+    条件の意味づけ(生活道路の定義、年齢と種別のペア判定、二重計上の回避)は
+    ここ1か所に置く。ツールごとに書くと、片方だけ直して数字が食い違う。
+
+    返すのは (WHERE句, 注記, 都道府県のラベル)。
+    """
+    where: list[str] = []
+    notes: list[str] = []
+    scope_pref = "全国"
+
+    if seikatsu:
+        if road_width:
+            raise ValueError("seikatsu と road_width は同時に指定できない")
+        road_width = SEIKATSU[seikatsu]
+        notes.append(
+            "生活道路 = 車道幅員5.5m未満。"
+            + ("strict(交差する両方が5.5m未満)で絞った。broad にすると件数は約2倍になる"
+               if seikatsu == "strict"
+               else "broad(片側のみ5.5m未満の交差点を含む)で絞った。幹線側の事故も含まれる"))
+    if road_width:
+        where.append(f'"車道幅員" IN ({_quote(_codes_to_labels(road_width, vocab.ROAD_WIDTH, "road_width"))})')
+
+    if year_from is not None:
+        where.append(f"{year_col} >= {int(year_from)}")
+    if year_to is not None:
+        where.append(f"{year_col} <= {int(year_to)}")
+
+    if prefecture:
+        expanded = _expand_prefecture(prefecture)
+        where.append(f'"都道府県名" IN ({_quote(expanded)})')
+        scope_pref = "・".join(dict.fromkeys(
+            "北海道" if p.startswith("北海道") else p for p in expanded))
+        if any(p.startswith("北海道") for p in expanded):
+            notes.append("北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)のため合算した")
+
+    if party_age or party_type:
+        # 年齢と種別は同一当事者でペア判定する。A側とB側を別々に数えて足すと、
+        # 双方が条件に合う事故を二重に数えるため、OR でまとめて行単位で絞る。
+        conds = []
+        for side in (["A"] if party_scope == "A" else ["B"] if party_scope == "B" else ["A", "B"]):
+            sub = []
+            if party_age:
+                sub.append(f'"年齢（当事者{side}）" IN ({_quote(_codes_to_labels(party_age, vocab.AGE, "party_age"))})')
+            if party_type:
+                sub.append(f'"当事者種別（当事者{side}）" IN ({_quote(_codes_to_labels(party_type, vocab.PARTY_TYPE, "party_type"))})')
+            conds.append("(" + " AND ".join(sub) + ")")
+        where.append("(" + " OR ".join(conds) + ")")
+        if party_age and "01" in [str(a).zfill(2) for a in party_age]:
+            notes.append("年齢 0〜24歳 は年齢層コードの最小区分。10代のみの切り出しは不可能")
+        if party_scope == "either":
+            notes.append("当事者AまたはBが条件を満たす事故を行単位で1件と数えた(二重計上なし)")
+
+    if accident_type:
+        where.append(f'"事故類型" IN ({_quote(_codes_to_labels(accident_type, vocab.ACCIDENT_TYPE, "accident_type"))})')
+    if day_night:
+        where.append(f'"昼夜" IN ({_quote(_codes_to_labels(day_night, vocab.DAY_NIGHT, "day_night"))})')
+    if fatal_only:
+        where.append("\"事故内容\" = '死亡事故'")
+        notes.append("死亡事故は全期間で16,266件と少ない。細かく絞ると年数件になり傾向を読めない")
+    if zone30_only:
+        where.append("\"ゾーン規制\" = 'ゾーン30'")
+
+    return where, notes, scope_pref
+
+
 # ── MCP Apps 拡張 ───────────────────────────────────────────────────────
 # 拡張はサーバーの構築時に取り込まれるため、ui:// リソースの登録と
 # @apps.tool の定義は MCPServer(...) より前に置く必要がある。
@@ -176,6 +259,17 @@ apps.add_html_resource(
     name="seikatsu_dashboard",
     title="生活道路ダッシュボード",
     description="生活道路（車道幅員5.5m未満）の事故の経年推移。strict/broad をその場で切り替えられる",
+    prefers_border=True,
+)
+
+# 地図ビューだけは外部と通信する。宣言したドメイン以外への接続はホストのCSPが止める
+apps.add_html_resource(
+    accident_map.RESOURCE_URI,
+    accident_map.load_html(),
+    name="accident_map",
+    title="事故地点マップ",
+    description="絞り込んだ事故の発生地点を地理院ベクトルタイル(淡色)の上に描く地図",
+    csp=accident_map.CSP,
     prefers_border=True,
 )
 
@@ -360,6 +454,176 @@ def seikatsu_dashboard(
     )
 
 
+# 日本の外に落ちた座標を弾くための範囲。0 や空文字が DOUBLE で 0.0 になるのを止める
+_JP_BBOX = {"lon": (122.0, 154.0), "lat": (20.0, 46.0)}
+_MAX_POINTS_CAP = 20000
+
+
+def _view_bounds(points: list[list[float]]) -> list[float]:
+    """初期表示の範囲。外れ値1%を落として決める。
+
+    東京のように離島を含む都道府県だと、最小最大でくくった途端に本土が豆粒になる。
+    落とした点も描かれてはいるので、引けば見える。
+    """
+    def span(i: int) -> tuple[float, float]:
+        v = sorted(p[i] for p in points)
+        k = len(v) // 100
+        return (v[k], v[-1 - k]) if len(v) >= 200 else (v[0], v[-1])
+
+    (w, e), (s, n) = span(0), span(1)
+    return [w, s, e, n]
+
+
+def _map_summary_md(p: dict[str, Any]) -> str:
+    """モデルに渡すテキスト。地図そのものは読めないので、件数と注意書きを渡す。"""
+    c = p["counts"]
+    line = f'該当 {c["該当"]:,}件のうち {c["描画"]:,}件を地図に描いた'
+    if c["抽出"]:
+        line += "（無作為抽出）"
+    return (
+        f'## 事故地点マップ\n\n{p["scope"]}\n\n{line}。'
+        f'座標が使えなかったのは {c["座標なし"]:,}件。\n\n'
+        + "\n".join("- " + n for n in p["notes"])
+        + f'\n\n<details><summary>SQL</summary>\n\n```sql\n{p["sql"]}\n```\n</details>'
+    )
+
+
+@apps.tool(
+    resource_uri=accident_map.RESOURCE_URI,
+    visibility=["model", "app"],
+    # 関数名は accident_map モジュールと衝突するので _tool 付き。公開名はここで固定する
+    name="accident_map",
+    title="事故地点マップ",
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                                idempotent_hint=True, open_world_hint=False),
+    description="""絞り込んだ事故の発生地点を地図に描く。「どこで起きているか」を見るためのツール。
+
+条件の指定は aggregate と同じコード値で行う（party_age, party_type, seikatsu ほか）。
+「どこ」を問われたときに使い、「いくつ・どう増えた」は aggregate で数えること。
+
+点の数が max_points を超えると無作為抽出して描く。抽出は REPEATABLE で固定して
+あるので同じ条件なら同じ点が出るが、**描画件数を事故件数として語らないこと**。
+件数は返り値の counts.該当 を使う。
+
+全国を無条件で描くと密度の濃淡しか見えない。都道府県や市区、条件で絞ってから使う。""",
+)
+def accident_map_tool(
+    ctx: Context,
+    prefecture: list[str] | None = None,
+    year_from: int = 2019,
+    year_to: int = 2024,
+    seikatsu: Literal["strict", "broad"] | None = None,
+    road_width: list[str] | None = None,
+    party_age: list[str] | None = None,
+    party_type: list[str] | None = None,
+    party_scope: Literal["A", "B", "either"] = "either",
+    accident_type: list[str] | None = None,
+    day_night: list[str] | None = None,
+    fatal_only: bool = False,
+    zone30_only: bool = False,
+    max_points: int = 5000,
+) -> CallToolResult:
+    c = con()
+    if year_from > year_to:
+        raise ValueError("year_from が year_to より大きい")
+    max_points = max(100, min(int(max_points), _MAX_POINTS_CAP))
+    ui_ok = client_supports_apps(ctx)
+
+    # 年次は資料年次(計上年)。発生年で絞ると最新年だけ約3%欠ける
+    where, notes, scope_pref = _filters(
+        year_from=year_from, year_to=year_to, seikatsu=seikatsu, road_width=road_width,
+        prefecture=prefecture, party_age=party_age, party_type=party_type,
+        party_scope=party_scope, accident_type=accident_type, day_night=day_night,
+        fatal_only=fatal_only, zone30_only=zone30_only)
+
+    lon_x = 'TRY_CAST("地点_経度（東経）_10進数" AS DOUBLE)'
+    lat_x = 'TRY_CAST("地点_緯度（北緯）_10進数" AS DOUBLE)'
+    inner = (
+        f"  SELECT {lon_x} AS lon,\n"
+        f"         {lat_x} AS lat,\n"
+        '         "資料年次" AS 年, "事故内容", "事故類型",\n'
+        '         "当事者種別（当事者A）" AS 種別A, "当事者種別（当事者B）" AS 種別B,\n'
+        '         "車道幅員", "昼夜", "ゾーン規制",\n'
+        f"         {PREF_EXPR} AS 都道府県\n"
+        "  FROM honhyo\n"
+        + ("  WHERE " + "\n    AND ".join(where) + "\n" if where else ""))
+    ok = (f'lon BETWEEN {_JP_BBOX["lon"][0]} AND {_JP_BBOX["lon"][1]} '
+          f'AND lat BETWEEN {_JP_BBOX["lat"][0]} AND {_JP_BBOX["lat"][1]}')
+
+    matched, no_coord = c.execute(
+        f"WITH f AS (\n{inner})\n"
+        f"SELECT count(*) FILTER (WHERE {ok}), count(*) FILTER (WHERE NOT ({ok}) OR lon IS NULL)\n"
+        "FROM f").fetchone()
+    matched, no_coord = int(matched or 0), int(no_coord or 0)
+    if matched == 0:
+        raise ValueError(
+            "条件に合う事故が0件（座標のある行が無い）。条件を緩めるか、"
+            "aggregate で件数を確かめること")
+
+    sampled = matched > max_points
+    # 行の内容のハッシュ順に上位を採る。同じ条件なら毎回同じ点が出る。
+    # USING SAMPLE ... REPEATABLE は並列スキャンだと再現しない（実測で毎回違う点が返る）。
+    sample_sql = (f"ORDER BY hash(lon, lat, 年, 種別A, 種別B, 昼夜)\nLIMIT {max_points}\n"
+                  if sampled else "")
+    sql = (f"WITH f AS (\n{inner})\n"
+           f"SELECT * FROM f\nWHERE {ok}\n{sample_sql}")
+
+    cur = c.execute(sql)
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    # 点はオブジェクトではなく配列で返す。5,000点だとキー名だけで数百KBになる。
+    legend: dict[str, list[str]] = {"事故類型": [], "種別": [], "車道幅員": [], "昼夜": [], "都道府県": []}
+
+    def idx(kind: str, value: str | None) -> int:
+        v = value or "不明"
+        arr = legend[kind]
+        if v not in arr:
+            arr.append(v)
+        return arr.index(v)
+
+    points = [[round(r["lon"], 5), round(r["lat"], 5), int(r["年"]),
+               1 if r["事故内容"] == "死亡事故" else 0,
+               idx("事故類型", r["事故類型"]), idx("種別", r["種別A"]), idx("種別", r["種別B"]),
+               idx("車道幅員", r["車道幅員"]), idx("昼夜", r["昼夜"]),
+               1 if r["ゾーン規制"] == "ゾーン30" else 0, idx("都道府県", r["都道府県"])]
+              for r in rows]
+
+    notes.append("資料年次(計上年)で絞った。地図上の点は事故1件の発生地点")
+    if sampled:
+        notes.append(f"該当 {matched:,}件は多いため {max_points:,}件を抽出して描いた"
+                     "(内容のハッシュ順。同じ条件なら同じ点が出る)。密度の見え方は保たれるが、"
+                     "描画件数を事故件数として語らないこと")
+    if no_coord:
+        notes.append(f"座標が範囲外・欠損の {no_coord:,}件は描いていない")
+    notes.append("点の重なりは件数の多さを意味しない。同一地点の複数事故は重なって1点に見える")
+    if not ui_ok:
+        notes.append("このクライアントは MCP Apps を有効にしていないため地図は描画されない。"
+                     "地点を見せる必要があるなら、対応ホスト(Claude Desktop 等)で開くこと")
+
+    payload = {
+        "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
+        "args": {"prefecture": prefecture, "year_from": year_from, "year_to": year_to,
+                 "seikatsu": seikatsu, "road_width": road_width,
+                 "party_age": party_age, "party_type": party_type, "party_scope": party_scope,
+                 "accident_type": accident_type, "day_night": day_night,
+                 "fatal_only": fatal_only, "zone30_only": zone30_only,
+                 "max_points": max_points},
+        "counts": {"該当": matched, "描画": len(points), "抽出": sampled, "座標なし": no_coord},
+        "fields": ["lon", "lat", "年", "死亡", "事故類型", "種別A", "種別B",
+                   "車道幅員", "昼夜", "ゾーン30", "都道府県"],
+        "legend": legend,
+        "points": points,
+        "bounds": _view_bounds(points),
+        "notes": notes,
+        "sql": sql,
+    }
+    return CallToolResult(
+        content=[TextContent(type="text", text=_map_summary_md(payload))],
+        structured_content=payload,
+    )
+
+
 server = MCPServer(
     name="npa-traffic-accident",
     title="警察庁交通事故統計",
@@ -470,57 +734,15 @@ def aggregate(
         else:
             raise ValueError(f"group_by に未知の項目 '{g}'。使えるのは {sorted(GROUP_COLUMNS)}")
 
-    where: list[str] = []
-
-    if seikatsu:
-        if road_width:
-            raise ValueError("seikatsu と road_width は同時に指定できない")
-        road_width = SEIKATSU[seikatsu]
-        notes.append(
-            "生活道路 = 車道幅員5.5m未満。"
-            + ("strict(交差する両方が5.5m未満)で絞った。broad にすると件数は約2倍になる"
-               if seikatsu == "strict"
-               else "broad(片側のみ5.5m未満の交差点を含む)で絞った。幹線側の事故も含まれる"))
-    if road_width:
-        where.append(f'"車道幅員" IN ({_quote(_codes_to_labels(road_width, vocab.ROAD_WIDTH, "road_width"))})')
-
-    if year_from is not None:
-        where.append(f"{year_col} >= {int(year_from)}")
-    if year_to is not None:
-        where.append(f"{year_col} <= {int(year_to)}")
+    where, filter_notes, _ = _filters(
+        year_col=year_col, year_from=year_from, year_to=year_to,
+        seikatsu=seikatsu, road_width=road_width, prefecture=prefecture,
+        party_age=party_age, party_type=party_type, party_scope=party_scope,
+        accident_type=accident_type, day_night=day_night,
+        fatal_only=fatal_only, zone30_only=zone30_only)
+    notes += filter_notes
     if year_basis == "発生年":
         notes.append("発生年で集計した。最新年は翌年ファイルに計上される分が欠けるため約3%過少に出る")
-
-    if prefecture:
-        expanded = _expand_prefecture(prefecture)
-        where.append(f'"都道府県名" IN ({_quote(expanded)})')
-        if any(p.startswith("北海道") for p in expanded) and len(expanded) > 1:
-            notes.append("北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)のため合算した")
-
-    if party_age or party_type:
-        conds = []
-        for side in (["A"] if party_scope == "A" else ["B"] if party_scope == "B" else ["A", "B"]):
-            sub = []
-            if party_age:
-                sub.append(f'"年齢（当事者{side}）" IN ({_quote(_codes_to_labels(party_age, vocab.AGE, "party_age"))})')
-            if party_type:
-                sub.append(f'"当事者種別（当事者{side}）" IN ({_quote(_codes_to_labels(party_type, vocab.PARTY_TYPE, "party_type"))})')
-            conds.append("(" + " AND ".join(sub) + ")")
-        where.append("(" + " OR ".join(conds) + ")")
-        if party_age and "01" in [str(a).zfill(2) for a in party_age]:
-            notes.append("年齢 0〜24歳 は年齢層コードの最小区分。10代のみの切り出しは不可能")
-        if party_scope == "either":
-            notes.append("当事者AまたはBが条件を満たす事故を行単位で1件と数えた(二重計上なし)")
-
-    if accident_type:
-        where.append(f'"事故類型" IN ({_quote(_codes_to_labels(accident_type, vocab.ACCIDENT_TYPE, "accident_type"))})')
-    if day_night:
-        where.append(f'"昼夜" IN ({_quote(_codes_to_labels(day_night, vocab.DAY_NIGHT, "day_night"))})')
-    if fatal_only:
-        where.append("\"事故内容\" = '死亡事故'")
-        notes.append("死亡事故は全期間で16,266件と少ない。細かく絞ると年数件になり傾向を読めない")
-    if zone30_only:
-        where.append("\"ゾーン規制\" = 'ゾーン30'")
 
     where_sql = "WHERE " + "\n  AND ".join(where) + "\n" if where else ""
     keys = ", ".join(str(i + 1) for i in range(len(groups)))

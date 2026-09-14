@@ -1,0 +1,90 @@
+@import "./base.css";
+
+/* 事故地点マップ固有。--series-* は base.css で定義済み */
+:root {
+  --pt-fatal: light-dark(#c62f1c, #ff7a63);
+  --pt-injury: light-dark(#1d5fa8, #6fb0f0);
+}
+
+.head-right { display: flex; align-items: center; gap: 10px; }
+.counts { margin: 0; font-size: 11.5px; color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums; }
+.counts b { font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+
+#expand {
+  font: var(--font-weight-medium) 11.5px/1.5 var(--font-sans);
+  padding: 4px 10px; cursor: pointer; color: var(--color-text-secondary);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border-primary); border-radius: var(--border-radius-sm);
+}
+
+.warn {
+  margin: 0; padding: 7px 10px; font-size: 11.5px; line-height: 1.5;
+  color: var(--color-text-secondary); background: var(--color-background-secondary);
+  border-left: 2px solid var(--pt-fatal); border-radius: var(--border-radius-md);
+}
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.switch-label { align-self: center; padding: 0 8px 0 6px; font-size: 11px; color: var(--color-text-tertiary); }
+.check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+  color: var(--color-text-secondary); cursor: pointer; }
+.check input { accent-color: var(--series-road); margin: 0; }
+
+.years { display: flex; flex-wrap: wrap; gap: 4px; }
+.years button {
+  font: var(--font-weight-medium) 11.5px/1.5 var(--font-mono);
+  padding: 3px 8px; cursor: pointer; color: var(--color-text-tertiary);
+  background: transparent; border: 1px solid var(--color-border-primary);
+  border-radius: var(--border-radius-sm);
+}
+.years button[aria-pressed="true"] {
+  color: var(--color-background-primary); background: var(--series-road);
+  border-color: var(--series-road);
+}
+
+.map-wrap { position: relative; }
+#map {
+  /* iframe の高さはホストが中身から決めるので、vh ではなく実寸で持つ */
+  height: 420px; border-radius: var(--border-radius-md);
+  overflow: hidden; border: 1px solid var(--color-border-primary);
+  background: var(--color-background-secondary);
+}
+.fullscreen #map { height: calc(100vh - 230px); min-height: 420px; }
+
+.map-wrap .legend {
+  position: absolute; left: 10px; bottom: 10px; margin: 0; gap: 4px 12px;
+  padding: 5px 9px; font-size: 11px;
+  background: color-mix(in srgb, var(--color-background-primary) 88%, transparent);
+  border: 1px solid var(--color-border-primary); border-radius: var(--border-radius-sm);
+}
+.legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
+.dot.fatal { background: var(--pt-fatal); }
+.dot.injury { background: var(--pt-injury); }
+
+/* MapLibre のUIをホストのテーマに合わせる */
+.maplibregl-ctrl-group { background: var(--color-background-primary); }
+.maplibregl-ctrl-group button + button { border-top-color: var(--color-border-primary); }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+.maplibregl-popup-content {
+  padding: 8px 10px; font-family: var(--font-sans); font-size: 11.5px; line-height: 1.6;
+  color: var(--color-text-primary); background: var(--color-background-primary);
+  border: 1px solid var(--color-border-primary); border-radius: var(--border-radius-md);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+}
+.maplibregl-popup-tip { display: none; }
+.maplibregl-popup-close-button { color: var(--color-text-tertiary); font-size: 15px; }
+.pop-h { font-weight: var(--font-weight-semibold); margin-bottom: 3px; }
+.pop-h .fatal { color: var(--pt-fatal); }
+.pop dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; margin: 0; }
+.pop dt { color: var(--color-text-tertiary); }
+.pop dd { margin: 0; }
+
+/* MapLibre のアイコンは黒い画像。ダークでは反転しないと背景に沈む */
+:root[data-theme="dark"] .maplibregl-ctrl-icon { filter: invert(1) brightness(1.4); }
+:root[data-theme="dark"] .maplibregl-ctrl-attrib,
+:root[data-theme="dark"] .maplibregl-ctrl-scale {
+  background: color-mix(in srgb, var(--color-background-primary) 82%, transparent);
+  color: var(--color-text-secondary);
+}
+:root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: var(--color-text-secondary); }
+:root[data-theme="dark"] .maplibregl-ctrl-scale { border-color: var(--color-border-primary); }

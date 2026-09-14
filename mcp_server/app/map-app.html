@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>事故地点マップ</title>
+</head>
+<body>
+  <main class="main">
+    <header class="head">
+      <div>
+        <h1>事故地点マップ</h1>
+        <p class="scope" id="scope">読み込み中…</p>
+      </div>
+      <div class="head-right">
+        <p class="counts" id="counts"></p>
+        <button type="button" id="expand" hidden>全画面</button>
+      </div>
+    </header>
+
+    <p class="warn" id="warn" hidden></p>
+
+    <div class="controls">
+      <div class="switch" role="group" aria-label="生活道路の定義">
+        <span class="switch-label">生活道路</span>
+        <button type="button" data-seikatsu="none" aria-pressed="true">絞らない</button>
+        <button type="button" data-seikatsu="strict" aria-pressed="false">strict</button>
+        <button type="button" data-seikatsu="broad" aria-pressed="false">broad</button>
+      </div>
+      <label class="check"><input type="checkbox" id="fatal"> 死亡事故のみ</label>
+      <div class="years" id="years" role="group" aria-label="年で絞る"></div>
+    </div>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="legend">
+        <span><i class="dot fatal"></i>死亡事故</span>
+        <span><i class="dot injury"></i>負傷事故</span>
+      </div>
+    </div>
+
+    <ul class="notes" id="notes"></ul>
+
+    <details>
+      <summary>実行したSQL</summary>
+      <pre id="sql"></pre>
+    </details>
+
+    <p class="err" id="err" hidden></p>
+  </main>
+  <script type="module" src="/src/map-app.ts"></script>
+</body>
+</html>
