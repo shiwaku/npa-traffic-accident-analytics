@@ -7,9 +7,57 @@ R2 上の GeoParquet を DuckDB で集計する MCP サーバー。
 
 | | |
 |---|---|
-| `aggregate` | 条件を指定して集計する。主にこれを使う |
+| `seikatsu_dashboard` | 生活道路の概況。**UI付き**（MCP Apps）。全事故を母数として同時に数える |
+| `aggregate` | 条件を指定して集計する。細かい切り口はこれ |
 | `list_values` | 項目の有効なコード値とラベルと件数を返す |
 | `run_sql` | `aggregate` で表現できない集計のための逃げ道。読み取り専用 |
+
+## UI（MCP Apps）
+
+`seikatsu_dashboard` は [MCP Apps 拡張](https://apps.extensions.modelcontextprotocol.io/)
+（`io.modelcontextprotocol/ui`）で `ui://` リソースに紐づいており、対応ホストでは
+グラフ付きのダッシュボードがサンドボックスiframeで描画される。
+
+| | |
+|---|---|
+| 描画される | Claude Desktop、claude.ai |
+| 描画されない | ターミナルの Claude Code（iframeを持たない）。ツールは同じ数字を返すので集計としては壊れない |
+
+**サーバー側**は `mcp.server.apps`（`mcp>=2.2.0` に同梱、追加依存なし）。
+**ビュー側**は `app/` を公式SDK `@modelcontextprotocol/ext-apps` で組み、
+Vite で単一HTMLにバンドルしたものを `dashboard.py` が読む。
+
+```bash
+cd mcp_server/app && npm install && npm run build   # -> app/dist/mcp-app.html
+```
+
+ハンドシェイク（`ui/initialize`）・`tool-result` の受信・`tools/call` の送出・
+サイズ通知は SDK の `App` クラスに任せる。**ここを手書きしないこと。**
+`ui/initialize` の params は `appInfo` / `appCapabilities` / `protocolVersion` で、
+`appInfo` を `clientInfo` と書くとホストによっては黙って描画されない。
+
+`vite-plugin-singlefile` は必須。サンドボックスiframeは外部アセットを取りに
+行けないため、JS/CSSがHTMLに畳み込まれていないとビューは動かない。
+ビューは外部リソースを一切読まない（グラフはインラインSVG、配色とフォントは
+ホストが渡す CSS 変数）ので、`_meta.ui.csp` で追加ドメインを宣言していない。
+
+ビュー内の **strict / broad トグル**は `visibility: ["model","app"]` の同じツールを
+`app.callServerTool(...)` で呼び直す。会話に戻らずに定義を切り替えられるので、
+**件数が1.79倍動くこと**をその場で確かめられる。
+
+ツールは `CallToolResult` を返し、`content`（モデルが読む表）と
+`structuredContent`（ビューが読むデータ）を分けている。分けないと、
+ビューが描画されたときに同じ数字が二重に会話へ流れる。
+
+拡張はサーバー構築時に取り込まれるため、`apps.add_html_resource(...)` と
+`@apps.tool(...)` は `MCPServer(...)` より**前**に置く必要がある。
+
+なお、この作業には公式スキルがある。迷ったらこれに従う。
+
+```
+/plugin marketplace add modelcontextprotocol/ext-apps
+/plugin install mcp-apps@mcp-apps          # add-app-to-server ほか
+```
 
 ## 設計の要点
 
@@ -44,8 +92,22 @@ Claude Code への登録:
 claude mcp add npa-traffic-accident --scope user -- python <このファイルの絶対パス>/server.py
 ```
 
-claude.ai のカスタムコネクタとして使うには、`--http` で起動したものを
-公開HTTPSで到達できる場所に置く必要がある。設置先は未定（docs/DESIGN.md 参照）。
+Claude Desktop（UIを見るならここ）への登録は `claude_desktop_config.json` に:
+
+```json
+{ "mcpServers": { "npa-traffic-accident": {
+    "command": "python", "args": ["<絶対パス>/mcp_server/server.py"] } } }
+```
+
+**DuckDB がどこで走るか**は接続方式で決まる。
+
+| 方式 | DuckDBの実行場所 | ホスティング |
+|---|---|---|
+| Claude Desktop + stdio | このPC | **不要** |
+| claude.ai + トンネル（`--allow-host`） | このPC（起動している間だけ） | 不要だがPCが常時稼働である必要 |
+| claude.ai + 常設サーバー | サーバー | 必要。設置先は未定（docs/DESIGN.md 11章） |
+
+いずれの場合も R2 からは Range リクエストで数MBしか取らない。設置先は未定。
 
 ## 定義
 

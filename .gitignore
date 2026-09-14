@@ -18,3 +18,7 @@ dist/
 # エディタ
 .DS_Store
 .claude/
+
+# ビューのビルド成果物だけは例外。サーバーが起動時に読むため
+!mcp_server/app/dist/
+!mcp_server/app/dist/mcp-app.html

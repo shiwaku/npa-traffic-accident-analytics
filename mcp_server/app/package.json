@@ -1,0 +1,20 @@
+{
+  "name": "npa-seikatsu-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "生活道路ダッシュボードのビュー（MCP Apps）。単一HTMLにバンドルして Python サーバーが ui:// リソースとして配る",
+  "scripts": {
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
