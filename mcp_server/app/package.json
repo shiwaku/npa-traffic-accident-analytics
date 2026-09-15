@@ -3,13 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "生活道路ダッシュボードのビュー（MCP Apps）。単一HTMLにバンドルして Python サーバーが ui:// リソースとして配る",
+  "description": "MCP Apps のビュー（生活道路ダッシュボードと事故地点マップ）。単一HTMLにバンドルして Python サーバーが ui:// リソースとして配る",
   "scripts": {
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build && vite build --mode map"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
     "@modelcontextprotocol/ext-apps": "^2.0.0",
+    "maplibre-gl": "^5.24.0",
     "zod": "^4.2.0"
   },
   "devDependencies": {

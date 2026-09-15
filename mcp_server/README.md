@@ -8,15 +8,17 @@ R2 上の GeoParquet を DuckDB で集計する MCP サーバー。
 | | |
 |---|---|
 | `seikatsu_dashboard` | 生活道路の概況。**UI付き**（MCP Apps）。全事故を母数として同時に数える |
+| `accident_map` | 絞り込んだ事故の発生地点を地図に描く。**UI付き**（MCP Apps + MapLibre） |
 | `aggregate` | 条件を指定して集計する。細かい切り口はこれ |
 | `list_values` | 項目の有効なコード値とラベルと件数を返す |
 | `run_sql` | `aggregate` で表現できない集計のための逃げ道。読み取り専用 |
 
 ## UI（MCP Apps）
 
-`seikatsu_dashboard` は [MCP Apps 拡張](https://apps.extensions.modelcontextprotocol.io/)
+`seikatsu_dashboard`（ダッシュボード）と `accident_map`（地図）は
+[MCP Apps 拡張](https://apps.extensions.modelcontextprotocol.io/)
 （`io.modelcontextprotocol/ui`）で `ui://` リソースに紐づいており、対応ホストでは
-グラフ付きのダッシュボードがサンドボックスiframeで描画される。
+サンドボックスiframeの中に描画される。
 
 | | |
 |---|---|
@@ -28,8 +30,12 @@ R2 上の GeoParquet を DuckDB で集計する MCP サーバー。
 Vite で単一HTMLにバンドルしたものを `dashboard.py` が読む。
 
 ```bash
-cd mcp_server/app && npm install && npm run build   # -> app/dist/mcp-app.html
+cd mcp_server/app && npm install && npm run build
+# -> app/dist/mcp-app.html（ダッシュボード）と app/dist/map-app.html（地図）
 ```
+
+ビューは2つあるが、単一HTML化はエントリが1つであることが前提のため
+`vite build` を2回（`--mode map` 付き）走らせている。`npm run build` が両方やる。
 
 ハンドシェイク（`ui/initialize`）・`tool-result` の受信・`tools/call` の送出・
 サイズ通知は SDK の `App` クラスに任せる。**ここを手書きしないこと。**
@@ -38,12 +44,34 @@ cd mcp_server/app && npm install && npm run build   # -> app/dist/mcp-app.html
 
 `vite-plugin-singlefile` は必須。サンドボックスiframeは外部アセットを取りに
 行けないため、JS/CSSがHTMLに畳み込まれていないとビューは動かない。
-ビューは外部リソースを一切読まない（グラフはインラインSVG、配色とフォントは
-ホストが渡す CSS 変数）ので、`_meta.ui.csp` で追加ドメインを宣言していない。
+ダッシュボードは外部リソースを一切読まない（グラフはインラインSVG）ので
+`_meta.ui.csp` を宣言していない。
+
+**地図ビューだけは外部と通信する。** `add_html_resource(csp=ResourceCsp(...))` で
+地理院のタイル（`cyberjapandata.gsi.go.jp`）とグリフ・スプライト
+（`gsi-cyberjapan.github.io`）を宣言している。宣言しないドメインへの通信は
+ホストのCSPが止める。**Artifact と違い、MCP Apps は宣言すれば外部を読める。**
+
+| | |
+|---|---|
+| 背景地図 | 地理院 最適化ベクトルタイル（淡色）。スタイルは `src/gsi-pale.json` に取り込み済み |
+| 由来 | [shiwaku/dm-converter](https://github.com/shiwaku/dm-converter) の `viewer/public/pale.json`。ダーク化の明度反転も同リポジトリの手法 |
+| タイルの参照先 | 素のスタイルは `pmtiles://` を指すが、pmtilesライブラリを足さずに済むよう XYZ (`.pbf`) に向け直している |
+| 描画 | MapLibre GL JS。Web Worker（blob）は参照ホストのCSP `worker-src 'self' blob:` で動く |
+
+MapLibre に渡す色は `getComputedStyle(...).getPropertyValue()` の値をそのまま使えない。
+`light-dark(#a, #b)` の宣言が返り、MapLibre は "Could not parse color" でそのレイヤーを
+描かない（**地図自体は出るので気付きにくい**）。ダミー要素に載せて算出値を読むこと。
 
 ビュー内の **strict / broad トグル**は `visibility: ["model","app"]` の同じツールを
 `app.callServerTool(...)` で呼び直す。会話に戻らずに定義を切り替えられるので、
-**件数が1.79倍動くこと**をその場で確かめられる。
+**件数が1.79倍動くこと**をその場で確かめられる。地図ビューも同じ仕組みで、
+生活道路の定義と「死亡事故のみ」はサーバーを呼び直し（該当件数が変わるため）、
+年の絞り込みは受け取った点だけを絞る（再問い合わせなし）。
+
+点が `max_points` を超えるときは**内容のハッシュ順で上位を採る**。
+`USING SAMPLE ... REPEATABLE` は並列スキャンだと再現せず、同じ条件で呼び直すたびに
+点が入れ替わる（実測）。切り替えたつもりのない差が「変化」に見えてしまう。
 
 ツールは `CallToolResult` を返し、`content`（モデルが読む表）と
 `structuredContent`（ビューが読むデータ）を分けている。分けないと、
