@@ -1,0 +1,42 @@
+@import "./base.css";
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.switch-label { align-self: center; padding-left: 8px; font-size: 11px; color: var(--color-text-tertiary); }
+.check { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--color-text-secondary); }
+.counts { margin: 0; font-family: var(--font-mono); font-size: 11px;
+  color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 行数が多い集計(既定 limit 200)が来るので、表そのものを縦横にスクロールさせる。
+   ホストの iframe を際限なく伸ばすと、会話側が表だけで埋まる。 */
+.table-wrap { max-height: 460px; overflow: auto; border: 1px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md); }
+
+.grid { width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.grid th, .grid td { padding: 5px 8px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid var(--color-border-secondary); }
+.grid thead th { position: sticky; top: 0; z-index: 2;
+  background: var(--color-background-secondary); color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-medium); font-size: 10.5px; cursor: pointer;
+  user-select: none; border-bottom: 1px solid var(--color-border-primary); }
+.grid thead th:focus-visible { outline: 2px solid var(--series-road); outline-offset: -2px; }
+.grid th.key, .grid td.key { text-align: left; font-family: var(--font-mono); }
+.grid tbody tr:last-child td { border-bottom: 0; }
+.grid .sorted::after { content: " \25B2"; font-size: 8px; }
+.grid .sorted.desc::after { content: " \25BC"; }
+
+/* 件数の棒を数値の背後に敷く。桁を読まなくても大小が分かる */
+.bar-cell { position: relative; }
+.bar-cell .fill { position: absolute; inset: 1px auto 1px 1px; border-radius: 2px;
+  background: var(--series-road); opacity: .16; pointer-events: none; }
+.bar-cell .num { position: relative; }
+.pc { color: var(--color-text-tertiary); font-size: 10px; }
+
+/* 行列表示。セルの塗りは行内ではなく表全体の最大値を基準にする */
+.grid td.cell { font-family: var(--font-mono); }
+.grid td.cell .fill { inset: 1px; border-radius: 2px; }
+.grid td.zero { color: var(--color-text-tertiary); }
+.grid tbody th { position: sticky; left: 0; z-index: 1; text-align: left;
+  background: var(--color-background-primary); font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium); font-size: 11px; padding: 5px 8px;
+  border-bottom: 1px solid var(--color-border-secondary); }

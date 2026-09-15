@@ -22,3 +22,6 @@ dist/
 # ビューのビルド成果物だけは例外。サーバーが起動時に読むため
 !mcp_server/app/dist/
 !mcp_server/app/dist/mcp-app.html
+
+# MCP Apps 公式 example のスクリーンショット(設計時の参照用、原本は ext-apps リポジトリ)
+mcp-apps-samples/

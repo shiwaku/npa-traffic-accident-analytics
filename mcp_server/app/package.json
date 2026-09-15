@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MCP Apps のビュー（生活道路ダッシュボードと事故地点マップ）。単一HTMLにバンドルして Python サーバーが ui:// リソースとして配る",
+  "description": "MCP Apps のビュー（生活道路ダッシュボード・事故地点マップ・集計表）。単一HTMLにバンドルして Python サーバーが ui:// リソースとして配る",
   "scripts": {
-    "build": "tsc --noEmit && vite build && vite build --mode map"
+    "build": "tsc --noEmit && vite build && vite build --mode map && vite build --mode table"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
