@@ -162,6 +162,34 @@ def _expand_prefecture(prefecture: list[str]) -> list[str]:
     return expanded
 
 
+# 地点の緯度経度。文字列なので毎回キャストする。空文字や範囲外は TRY_CAST で NULL になる
+_LON_X = 'TRY_CAST("地点_経度（東経）_10進数" AS DOUBLE)'
+_LAT_X = 'TRY_CAST("地点_緯度（北緯）_10進数" AS DOUBLE)'
+
+# 緯度1度・経度1度のメートル換算。日本の緯度帯なら等距円筒近似で十分
+# (半径50m〜数kmの用途で、測地線との差は1%に届かない)
+_M_PER_DEG_LAT = 110540.0
+_M_PER_DEG_LON = 111320.0
+
+
+def _radius_sql(lat0: float, lon0: float, radius_m: float) -> tuple[str, str]:
+    """中心からの半径で絞る条件を2つ返す(粗い矩形, 正確な距離)。
+
+    矩形を先に置くのは row group の枝刈りを効かせるため。距離だけで書くと
+    全行の三角関数を計算することになる。
+    """
+    import math
+
+    dlat = radius_m / _M_PER_DEG_LAT
+    dlon = radius_m / (_M_PER_DEG_LON * math.cos(math.radians(lat0)))
+    box = (f"{_LAT_X} BETWEEN {lat0 - dlat:.8f} AND {lat0 + dlat:.8f} "
+           f"AND {_LON_X} BETWEEN {lon0 - dlon:.8f} AND {lon0 + dlon:.8f}")
+    dx = f"(({_LON_X} - {lon0:.8f}) * {_M_PER_DEG_LON} * {math.cos(math.radians(lat0)):.10f})"
+    dy = f"(({_LAT_X} - {lat0:.8f}) * {_M_PER_DEG_LAT})"
+    exact = f"({dx} * {dx} + {dy} * {dy}) <= {radius_m * radius_m:.4f}"
+    return box, exact
+
+
 def _filters(
     *,
     year_col: str = '"資料年次"',
@@ -177,6 +205,9 @@ def _filters(
     day_night: list[str] | None = None,
     fatal_only: bool = False,
     zone30_only: bool = False,
+    center_lat: float | None = None,
+    center_lon: float | None = None,
+    radius_m: float | None = None,
 ) -> tuple[list[str], list[str], str]:
     """絞り込み条件を WHERE 句のリストに組み立てる。aggregate と accident_map で共用する。
 
@@ -240,6 +271,27 @@ def _filters(
         notes.append("死亡事故は全期間で16,266件と少ない。細かく絞ると年数件になり傾向を読めない")
     if zone30_only:
         where.append("\"ゾーン規制\" = 'ゾーン30'")
+
+    if radius_m is not None:
+        if center_lat is None or center_lon is None:
+            raise ValueError("radius_m を使うときは center_lat と center_lon も渡すこと")
+        if radius_m <= 0:
+            raise ValueError("radius_m は正の数")
+        # 緯度経度の取り違えはよくある間違いで、黙って0件になると原因が分からない
+        if not (20.0 <= center_lat <= 46.0 and 122.0 <= center_lon <= 154.0):
+            raise ValueError(
+                f"center_lat={center_lat} / center_lon={center_lon} が日本の範囲外。"
+                "緯度(北緯、35前後)と経度(東経、139前後)を取り違えていないか確認すること")
+        box, exact = _radius_sql(center_lat, center_lon, radius_m)
+        where.append(box)
+        where.append(exact)
+        notes.append(
+            f"({center_lat}, {center_lon}) から半径{radius_m:.0f}mで絞った。"
+            "座標は0.1秒(緯度で約3m)刻みで記録されている")
+        scope_pref = (f"半径{radius_m:.0f}m以内" if scope_pref == "全国"
+                      else f"{scope_pref}／半径{radius_m:.0f}m以内")
+    elif center_lat is not None or center_lon is not None:
+        raise ValueError("center_lat / center_lon を使うときは radius_m も渡すこと")
 
     return where, notes, scope_pref
 
@@ -485,6 +537,20 @@ def _view_bounds(points: list[list[float]]) -> list[float]:
     return [w, s, e, n]
 
 
+def _circle_bounds(lat0: float, lon0: float, radius_m: float) -> list[float]:
+    """半径指定のときの初期表示範囲。点の分布ではなく指定した円から決める。
+
+    点から決めると、円の端に1件しかない場合にそこまで引きの絵になり、
+    「半径50mを見ている」という指定が画面に出なくなる。少しだけ広げて円が収まるようにする。
+    """
+    import math
+
+    pad = 1.25
+    dlat = radius_m * pad / _M_PER_DEG_LAT
+    dlon = radius_m * pad / (_M_PER_DEG_LON * math.cos(math.radians(lat0)))
+    return [lon0 - dlon, lat0 - dlat, lon0 + dlon, lat0 + dlat]
+
+
 def _map_summary_md(p: dict[str, Any]) -> str:
     """モデルに渡すテキスト。地図そのものは読めないので、件数と注意書きを渡す。"""
     c = p["counts"]
@@ -516,7 +582,16 @@ def _map_summary_md(p: dict[str, Any]) -> str:
 あるので同じ条件なら同じ点が出るが、**描画件数を事故件数として語らないこと**。
 件数は返り値の counts.該当 を使う。
 
-全国を無条件で描くと密度の濃淡しか見えない。都道府県や市区、条件で絞ってから使う。""",
+全国を無条件で描くと密度の濃淡しか見えない。都道府県や市区、条件で絞ってから使う。
+
+特定の地点まわりを見るときは center_lat / center_lon / radius_m の3つを揃えて渡す
+（例: 交差点の半径50m）。3つとも要る。座標は利用者が指定するもので、
+このサーバーは地名から座標を引く機能を持たない。地名しか分からない場合は、
+座標を確かめてもらうこと。
+
+座標は0.1秒(緯度で約3m)刻みで記録されているので、半径50m程度の指定には耐える。
+ただし記録された地点そのものの正確さは別問題で、交差点の中心に寄せられている
+とは限らない。道路形状の「交差点－」「交差点付近－」と併せて読むこと。""",
 )
 def accident_map_tool(
     ctx: Context,
@@ -532,6 +607,9 @@ def accident_map_tool(
     day_night: list[str] | None = None,
     fatal_only: bool = False,
     zone30_only: bool = False,
+    center_lat: float | None = None,
+    center_lon: float | None = None,
+    radius_m: float | None = None,
     max_points: int = 5000,
 ) -> CallToolResult:
     c = con()
@@ -545,7 +623,8 @@ def accident_map_tool(
         year_from=year_from, year_to=year_to, seikatsu=seikatsu, road_width=road_width,
         prefecture=prefecture, party_age=party_age, party_type=party_type,
         party_scope=party_scope, accident_type=accident_type, day_night=day_night,
-        fatal_only=fatal_only, zone30_only=zone30_only)
+        fatal_only=fatal_only, zone30_only=zone30_only,
+        center_lat=center_lat, center_lon=center_lon, radius_m=radius_m)
 
     lon_x = 'TRY_CAST("地点_経度（東経）_10進数" AS DOUBLE)'
     lat_x = 'TRY_CAST("地点_緯度（北緯）_10進数" AS DOUBLE)'
@@ -625,7 +704,10 @@ def accident_map_tool(
                    "車道幅員", "昼夜", "ゾーン30", "都道府県"],
         "legend": legend,
         "points": points,
-        "bounds": _view_bounds(points),
+        "bounds": _circle_bounds(center_lat, center_lon, radius_m) if radius_m else _view_bounds(points),
+        # 既定の15は、点がたまたま一箇所に固まったときに街路レベルまで寄るのを防ぐため。
+        # 半径を明示されたときは、その範囲を見たいという指定なので上限を上げる
+        "max_zoom": 18 if radius_m else 15,
         "notes": notes,
         "sql": sql,
     }

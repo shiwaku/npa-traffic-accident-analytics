@@ -37,6 +37,8 @@ interface Payload {
   legend: { 事故類型: string[]; 種別: string[]; 車道幅員: string[]; 昼夜: string[]; 都道府県: string[] };
   points: Point[];
   bounds: [number, number, number, number];
+  /** fitBounds の拡大上限。サーバーが用途に応じて決める（半径指定なら深く寄る） */
+  max_zoom?: number;
   notes: string[];
   sql: string;
 }
@@ -207,7 +209,7 @@ function apply(result: CallToolResult): void {
   else map.once("idle", addLayers);
 
   const [w, s, e, n] = d.bounds;
-  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: 15, duration: 0 });
+  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: d.max_zoom ?? 15, duration: 0 });
 }
 
 function popupHtml(props: Record<string, unknown>): string {
