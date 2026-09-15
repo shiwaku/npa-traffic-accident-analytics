@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>集計表</title>
+</head>
+<body>
+  <main class="main">
+    <header class="head">
+      <div>
+        <h1>集計表</h1>
+        <p class="scope" id="scope">読み込み中…</p>
+      </div>
+      <p class="counts" id="counts"></p>
+    </header>
+
+    <div class="controls">
+      <div class="switch" role="group" aria-label="表示の形" id="modes" hidden>
+        <span class="switch-label">表示</span>
+        <button type="button" data-mode="flat" aria-pressed="true">表</button>
+        <button type="button" data-mode="matrix" aria-pressed="false">行列</button>
+      </div>
+      <label class="check"><input type="checkbox" id="share" checked> 構成比を出す</label>
+    </div>
+
+    <div class="table-wrap">
+      <table class="grid" id="grid">
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <p class="legend" id="legend" hidden></p>
+
+    <ul class="notes" id="notes"></ul>
+
+    <details>
+      <summary>実行したSQL</summary>
+      <pre id="sql"></pre>
+    </details>
+
+    <p class="err" id="err" hidden></p>
+  </main>
+  <script type="module" src="/src/table-app.ts"></script>
+</body>
+</html>

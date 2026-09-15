@@ -24,6 +24,10 @@
 
 * { box-sizing: border-box; }
 
+/* display を指定したクラス(.switch など)が UA の [hidden]{display:none} を
+   上書きしてしまうので、こちらで勝たせる。JS は el.hidden で出し入れする */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--color-background-primary);

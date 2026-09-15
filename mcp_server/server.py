@@ -30,6 +30,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import accident_map  # noqa: E402
 import dashboard  # noqa: E402
+import table  # noqa: E402
 import vocab  # noqa: E402
 
 PARQUET_URL = os.environ.get(
@@ -270,6 +271,16 @@ apps.add_html_resource(
     title="事故地点マップ",
     description="絞り込んだ事故の発生地点を地理院ベクトルタイル(淡色)の上に描く地図",
     csp=accident_map.CSP,
+    prefers_border=True,
+)
+
+# 集計表。外部とは通信しないので CSP の宣言は要らない
+apps.add_html_resource(
+    table.RESOURCE_URI,
+    table.load_html(),
+    name="aggregate_table",
+    title="集計表",
+    description="aggregate の結果を表として描く。構成比と指数を併記し、2次元なら行列に畳む",
     prefers_border=True,
 )
 
@@ -624,45 +635,81 @@ def accident_map_tool(
     )
 
 
-server = MCPServer(
-    name="npa-traffic-accident",
-    title="警察庁交通事故統計",
-    instructions="""警察庁の交通事故統計(本票、2019〜2024年、1,895,275件)を集計する。
+# 改行。ソースに直接書くとツール経由の編集で潰れやすいので定数にしている
+NL = chr(10)
 
-集計の前に必ず知っておくこと:
+# 集計表の指標列。これ以外の列は group_by のキーとして扱う
+_MEASURES = ("件数", "死者数", "負傷者数")
 
-1. 年齢は実年齢ではなく**年齢層コード**で、最小区分が 0〜24歳。
-   「10代の事故」「未成年の事故」「20代の事故」は原理的に集計できない。
-   聞かれたら、それらしい数字を出さずにこの制約を伝えること。
-
-2. 「生活道路」は車道幅員5.5m未満の道路。交差点の扱いで2通りあり、
-   strict(交差する両方が5.5m未満)と broad(片側のみも含む)で**件数が約2倍変わる**。
-   どちらを使ったか必ず利用者に明示すること。曖昧なら先に確認する。
-
-3. 当事者Aは**過失が最も重い側**、Bはその相手方。被害者区分ではない。
-   実態としてはBが死傷している事故が77.5%だが、Bが無傷の事故も16.8%ある。
-
-4. 年齢と当事者種別は**同一当事者でペア判定**される。
-   party_scope='either' は「A または B が条件を満たす事故」を行単位で数えるので、
-   二重計上は起きない。ただし歩行者だけの集計と自転車だけの集計を足すと、
-   両方に該当する事故(6年間で384件)を二重に数えることになる。
-
-5. 年次は既定が資料年次(計上年)。各年の全事故件数が警察庁公表値と一致する。
-   発生年で数えると最新年が約3%過少に出るため、経年推移には向かない。
-
-6. 本票は**人身事故のみ**。物損事故は含まれない。
-   死亡事故は全期間で16,266件しかなく、細かく絞ると年数件になりトレンドを読めない。
-
-7. 生活道路の概況を聞かれたら seikatsu_dashboard を使う。全事故(母数)を同時に数え、
-   対応ホストではグラフ付きのビューが出る。細かい切り口が要るときだけ aggregate に降りる。
-
-実数の増減だけで語らないこと。2020年はコロナ禍で全体件数が前年比19%減しており、
-母数の変化を無視すると傾向を読み誤る。構成比や指数を併せて見ること。""",
-    extensions=[apps],
-)
+_GROUP_LABEL = {
+    "year": "年", "month": "月", "prefecture": "都道府県", "police_station": "警察署",
+    "road_width": "車道幅員", "road_type": "路線", "road_shape": "道路形状",
+    "zone": "ゾーン規制", "accident_type": "事故類型", "accident_content": "事故内容",
+    "day_night": "昼夜", "weather": "天候", "age_a": "年齢A", "age_b": "年齢B",
+    "party_type_a": "当事者種別A", "party_type_b": "当事者種別B",
+}
 
 
-@server.tool(
+def _agg_scope(scope_pref: str, year_basis: str, year_from: int | None,
+               year_to: int | None, seikatsu: str | None, fatal_only: bool,
+               zone30_only: bool, group_by: list[str]) -> str:
+    """ビューの見出しに出す、何をどう絞ったかの一行。"""
+    span = ("全期間" if year_from is None and year_to is None
+            else f"{year_from or 2019}〜{year_to or 2024}年")
+    parts = [scope_pref, f"{span}（{year_basis}）"]
+    if seikatsu:
+        parts.append(f"生活道路 {seikatsu}")
+    if fatal_only:
+        parts.append("死亡事故のみ")
+    if zone30_only:
+        parts.append("ゾーン30内のみ")
+    axes = " × ".join(_GROUP_LABEL.get(g, g) for g in group_by)
+    return " / ".join(parts) + f" ・ {axes}別"
+
+
+def _table_md(p: dict[str, Any]) -> str:
+    """モデルに渡すテキスト。ビューが描画されない環境ではこれがそのまま答えになる。
+
+    件数だけを並べると母数の変化を無視した読み方になるので、構成比を必ず併記し、
+    年だけで切った集計では指数(基準年=100)も出す。
+    """
+    keys, rows = p["key_columns"], p["rows"]
+    total = p["sum_count"]
+    # 指数は「年だけで切った」ときにしか意味を持たない。
+    # 年×都道府県のように同じ年が複数行あると、基準年の件数が定まらない。
+    base = None
+    if keys == ["年"] and rows:
+        base = int(min(rows, key=lambda r: int(r["年"]))["件数"])
+
+    head = keys + ["件数", "構成比"] + (["指数"] if base else [])         + [m for m in p["measures"] if m != "件数"]
+    align = ["---" if k in keys else "---:" for k in head]
+
+    body = []
+    for r in rows:
+        cells = [str(r[k]) for k in keys]
+        cells.append(f'{int(r["件数"]):,}')
+        cells.append(f'{int(r["件数"]) / total * 100:.1f}%' if total else "-")
+        if base:
+            cells.append(f'{int(r["件数"]) / base * 100:.0f}')
+        cells += [f'{int(r[m]):,}' for m in p["measures"] if m != "件数"]
+        body.append("| " + " | ".join(cells) + " |")
+
+    denom = "返した行の合計に対する比" if p["truncated"] else "この集計の合計に対する比"
+    head_md = '| ' + ' | '.join(head) + ' |'
+    align_md = '| ' + ' | '.join(align) + ' |'
+    return (
+        f'## 集計{NL}{NL}' + p['scope'] + NL + NL
+        + head_md + NL + align_md + NL + NL.join(body) + NL + NL
+        + f'{p["row_count"]}行／件数計 {total:,}（構成比は{denom}）' + NL + NL
+        + NL.join('- ' + n for n in p['notes'])
+        + NL + NL + '<details><summary>SQL</summary>' + NL + NL
+        + '```sql' + NL + p['sql'] + NL + '```' + NL + '</details>'
+    )
+
+
+@apps.tool(
+    resource_uri=table.RESOURCE_URI,
+    visibility=["model", "app"],
     title="集計する",
     annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
                                 idempotent_hint=True, open_world_hint=False),
@@ -701,6 +748,7 @@ limit で上位を絞るときは件数順が使われるので順位を誤ら�
 返り値には実行したSQLが含まれる。数字に疑問があれば確認すること。""",
 )
 def aggregate(
+    ctx: Context,
     group_by: list[str] | None = None,
     year_basis: Literal["資料年次", "発生年"] = "資料年次",
     year_from: int | None = None,
@@ -729,12 +777,14 @@ def aggregate(
             selects.append(f"{year_col} AS 年")
             groups.append(year_col)
         elif g in GROUP_COLUMNS:
-            selects.append(f"{GROUP_COLUMNS[g]} AS {g}")
+            # 列名は日本語に揃える。year だけ 年 で他が英語だと、表の見出しが
+            # 「年 / prefecture」のように混ざって読みにくい
+            selects.append(f'{GROUP_COLUMNS[g]} AS "{_GROUP_LABEL.get(g, g)}"')
             groups.append(GROUP_COLUMNS[g])
         else:
             raise ValueError(f"group_by に未知の項目 '{g}'。使えるのは {sorted(GROUP_COLUMNS)}")
 
-    where, filter_notes, _ = _filters(
+    where, filter_notes, scope_pref = _filters(
         year_col=year_col, year_from=year_from, year_to=year_to,
         seikatsu=seikatsu, road_width=road_width, prefecture=prefecture,
         party_age=party_age, party_type=party_type, party_scope=party_scope,
@@ -766,7 +816,67 @@ def aggregate(
     cur = c.execute(sql)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    return {"rows": rows, "row_count": len(rows), "notes": notes, "sql": sql}
+
+    truncated = len(rows) >= int(limit)
+    if truncated:
+        notes.append(f"limit {int(limit)} に達している。返していない行がある")
+    if not client_supports_apps(ctx):
+        notes.append("このクライアントは表ビューに対応していないので数字だけを返した")
+
+    payload = {
+        "scope": _agg_scope(scope_pref, year_basis, year_from, year_to,
+                            seikatsu, fatal_only, zone30_only, group_by),
+        "key_columns": [c for c in cols if c not in _MEASURES],
+        "measures": [m for m in _MEASURES if m in cols],
+        "rows": rows,
+        "row_count": len(rows),
+        "sum_count": sum(int(r["件数"]) for r in rows),
+        "truncated": truncated,
+        "notes": notes,
+        "sql": sql,
+    }
+    return CallToolResult(
+        content=[TextContent(type="text", text=_table_md(payload))],
+        structured_content=payload,
+    )
+
+
+server = MCPServer(
+    name="npa-traffic-accident",
+    title="警察庁交通事故統計",
+    instructions="""警察庁の交通事故統計(本票、2019〜2024年、1,895,275件)を集計する。
+
+集計の前に必ず知っておくこと:
+
+1. 年齢は実年齢ではなく**年齢層コード**で、最小区分が 0〜24歳。
+   「10代の事故」「未成年の事故」「20代の事故」は原理的に集計できない。
+   聞かれたら、それらしい数字を出さずにこの制約を伝えること。
+
+2. 「生活道路」は車道幅員5.5m未満の道路。交差点の扱いで2通りあり、
+   strict(交差する両方が5.5m未満)と broad(片側のみも含む)で**件数が約2倍変わる**。
+   どちらを使ったか必ず利用者に明示すること。曖昧なら先に確認する。
+
+3. 当事者Aは**過失が最も重い側**、Bはその相手方。被害者区分ではない。
+   実態としてはBが死傷している事故が77.5%だが、Bが無傷の事故も16.8%ある。
+
+4. 年齢と当事者種別は**同一当事者でペア判定**される。
+   party_scope='either' は「A または B が条件を満たす事故」を行単位で数えるので、
+   二重計上は起きない。ただし歩行者だけの集計と自転車だけの集計を足すと、
+   両方に該当する事故(6年間で384件)を二重に数えることになる。
+
+5. 年次は既定が資料年次(計上年)。各年の全事故件数が警察庁公表値と一致する。
+   発生年で数えると最新年が約3%過少に出るため、経年推移には向かない。
+
+6. 本票は**人身事故のみ**。物損事故は含まれない。
+   死亡事故は全期間で16,266件しかなく、細かく絞ると年数件になりトレンドを読めない。
+
+7. 生活道路の概況を聞かれたら seikatsu_dashboard を使う。全事故(母数)を同時に数え、
+   対応ホストではグラフ付きのビューが出る。細かい切り口が要るときだけ aggregate に降りる。
+
+実数の増減だけで語らないこと。2020年はコロナ禍で全体件数が前年比19%減しており、
+母数の変化を無視すると傾向を読み誤る。構成比や指数を併せて見ること。""",
+    extensions=[apps],
+)
 
 
 @server.tool(
