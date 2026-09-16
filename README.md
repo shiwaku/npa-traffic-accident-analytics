@@ -49,6 +49,9 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [CLAUDE.md](CLAUDE.md) | **指標・ディメンション定義の正典。集計前に必読** |
 | [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | **いま動いているものの仕組み。質問1つで何が起きるか** |
 | [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
+| [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | **別のマシン（Mac）の Claude Desktop に入れる手順** |
+| [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | claude.ai から使う（トンネル経由のリモートコネクタ） |
+| [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |
 | [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 
 `CLAUDE.md` には、このデータを正しく集計するために不可欠な知識が入っている。
