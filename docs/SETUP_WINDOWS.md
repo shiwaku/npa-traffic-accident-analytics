@@ -54,25 +54,23 @@ python --version
 **「Add python.exe to PATH」に必ずチェックを入れる**。入れ終えたら
 **PowerShell を開き直してから** もう一度 `python --version` を実行する。
 
-### Python の場所を控える
+### どの python が使われるか見ておく
 
-あとで設定ファイルに**絶対パスで**書くので、ここで調べておく。
+あとで設定ファイルに**絶対パスで**書く。パスは手順5でコマンドが自動で拾うので
+メモは要らないが、1つだけ罠があるので確認しておく。
 
 ```powershell
-where.exe python
+(Get-Command python).Source
 ```
-
-複数行出ることがある。
 
 ```
 C:\Users\<ユーザー名>\AppData\Local\Programs\Python\Python312\python.exe
-C:\Users\<ユーザー名>\AppData\Local\Microsoft\WindowsApps\python.exe
 ```
 
-**1行目を使う。** `WindowsApps\python.exe` は Microsoft Store を開くだけのショートカットで、
-これを設定に書くと動かない。
-
-この1行目を**「Python のパス」**と呼ぶ。メモしておく。
+**`WindowsApps\python.exe` と出たら要注意。** それは Microsoft Store を開くだけの
+ショートカットで、設定に書いても動かない。python.org 版を入れ直すか、
+`設定 → アプリ → アプリ実行エイリアス` で「アプリ インストーラー python.exe」を
+オフにしてから PowerShell を開き直す。
 
 ---
 
@@ -93,6 +91,10 @@ git clone https://github.com/shiwaku/npa-traffic-accident-analytics.git
 `npa-traffic-accident-analytics-main` という名前になるので、`-main` を外す。
 
 リポジトリは public なので、どちらの方法でも GitHub のアカウントは要らない。
+
+**別の場所に置いた場合**（例: `D:\work\` や `ドキュメント` の下）、以降に出てくる
+`cd $env:USERPROFILE\npa-traffic-accident-analytics` は**そのパスに読み替える**。
+手順5でここを間違えると動かないが、その場で気づけるようになっている。
 
 ---
 
@@ -118,7 +120,8 @@ python -c "import duckdb, mcp; print('OK')"
 > `externally-managed-environment` で弾かれることはなく、venv 無しで問題ない。
 > 使う場合は `python -m venv .venv` のあと
 > `.venv\Scripts\python.exe -m pip install -r mcp_server\requirements.txt` とし、
-> 手順1の「Python のパス」を `.venv\Scripts\python.exe` の絶対パスに読み替える。
+> 手順5-2 の `$py = (Get-Command python).Source` を
+> `$py = (Resolve-Path .\.venv\Scripts\python.exe).Path` に置き換える。
 
 ---
 
@@ -161,37 +164,72 @@ explorer (Split-Path $cfg)
 if (Test-Path $cfg) { Copy-Item $cfg "$env:TEMP\claude_desktop_config.backup.json"; "バックアップした" }
 ```
 
-### 5-2. 中身を書く
+### 5-2. 貼る内容を作る
 
-手順4で表示されたパスのファイルをメモ帳などで開き（無ければ新規作成して）、次の内容にする。
+**パスを手で書き写さない。** ここで間違えるのが最も多い失敗なので、
+実際のパスから貼れる形を生成する。**リポジトリのパスに移動してから**実行する。
+
+```powershell
+cd $env:USERPROFILE\npa-traffic-accident-analytics
+$py  = (Get-Command python).Source
+$srv = (Resolve-Path .\mcp_server\server.py).Path
+if ($py -like "*WindowsApps*") { "!! python が Microsoft Store のショートカットです。手順1をやり直してください" }
+'"npa-traffic-accident": {'
+'  "command": "' + $py.Replace('\','\\') + '",'
+'  "args": ["' + $srv.Replace('\','\\') + '"]'
+'}'
+```
+
+**`cd` の行は自分がコードを置いた場所に直す。** 手順2で別の場所に置いたなら、その絶対パス。
+場所が違えば `Resolve-Path` がエラーになるので、間違ったまま進むことはない。
+
+4行が出力される。これが貼る内容。
+
+```
+"npa-traffic-accident": {
+  "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "args": ["C:\\...\\npa-traffic-accident-analytics\\mcp_server\\server.py"]
+}
+```
+
+バックスラッシュが `\\` と2つになっているのは**正しい**。JSON ではこれが必要で、
+`C:\Users` のように1つで書くと `\U` が壊れた記号と解釈され、**設定ファイル全体が
+読めなくなって MCP サーバーが1つも出なくなる**。上のコマンドはこの変換も済ませている。
+
+### 5-3. ファイルに貼る
+
+手順4で表示されたパスのファイルを開く。
+
+```powershell
+notepad $cfg
+```
+
+**ファイルが空、または新規作成の場合** — 全体をこうする（`...` が 5-2 の出力4行）。
 
 ```json
 {
   "mcpServers": {
-    "npa-traffic-accident": {
-      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-      "args": ["C:\\Users\\<ユーザー名>\\npa-traffic-accident-analytics\\mcp_server\\server.py"]
-    }
+    ...
   }
 }
 ```
 
-**置き換えるのは2箇所だけ。**
+**既に `mcpServers` がある場合** — その `{ }` の中に 5-2 の出力を足す。
+**直前の項目の閉じ `}` の後ろにカンマが要る。**
 
-| 場所 | 入れる値 |
-|---|---|
-| `command` | 手順1で控えた**Python のパス** |
-| `args` の中 | **リポジトリのパス** + `\mcp_server\server.py` |
+```json
+{
+  "mcpServers": {
+    "既にあるサーバー": { "command": "...", "args": ["..."] },
+    ...
+  },
+  "他の設定": "触らない"
+}
+```
 
-**バックスラッシュは `\\` と2つ重ねる。** JSON ではこれが必要で、`C:\Users` のように1つで書くと
-`\U` が壊れた記号と解釈され、**設定ファイル全体が読めなくなって MCP サーバーが1つも
-出なくなる**。ここが最も多い失敗。
+`mcpServers` 以外のキー（`preferences` など）があっても**消さない**。
 
-既に他のサーバーが書いてある場合は、`mcpServers` の `{ }` の中に
-`"npa-traffic-accident": { ... }` を足すだけでよい。その際
-**直前の項目の閉じ `}` の後ろにカンマが要る**。
-
-### 5-3. 壊れていないか確かめる
+### 5-4. 壊れていないか確かめる
 
 保存したら、必ずこれを実行する。
 
@@ -277,9 +315,10 @@ Claude Desktop で**新しい会話**を開いて貼る。
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（`\\` の書き忘れが最多） | 手順5-3 を実行。`JSON OK` が出るまで直す |
+| `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（カンマ抜け・`\\` の書き忘れ） | 手順5-4 を実行。`JSON OK` が出るまで直す |
 | このサーバー**だけ**出ない | 設定ファイルの場所が違う | 手順4をやり直す。Store 版なのに `%APPDATA%\Claude` に書いていないか |
-| ログに `Server disconnected` | `command` の Python が存在しない | 手順1の `where.exe python` の**1行目**を書いているか。`WindowsApps\python.exe` は不可 |
+| ログに `Server disconnected` | `command` の Python が存在しない | 手順5-2 を実行し直して出力をそのまま貼る。`WindowsApps\python.exe` になっていたら手順1へ |
+| ログに `can't open file ... server.py` | `args` のパスが実際の置き場所と違う | **リポジトリのパスに `cd` してから**手順5-2 を実行し直す |
 | ログに `ModuleNotFoundError` | 依存が別の Python に入った | `command` に書いたパスで `<そのパス> -m pip install -r mcp_server\requirements.txt` |
 | ログファイルが無い | 一度も起動を試みていない | 手順6の再起動をやり直す |
 | 設定を直したのに変わらない | × で閉じただけで終了していない | トレイ右クリック →「終了」→ 起動 |
