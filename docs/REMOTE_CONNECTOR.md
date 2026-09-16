@@ -97,6 +97,9 @@ cloudflared を止めても R2 のデータは消えないし、Claude Desktop �
 
 Claude Desktop が自分で起動・終了する。**手で起動する必要はない。**
 
+Windows での逐次手順（設定ファイルの場所、再起動の作法、症状別の対処）は
+[SETUP_WINDOWS.md](SETUP_WINDOWS.md) にまとめてある。Mac は [SETUP_MAC.md](SETUP_MAC.md)。
+
 ```
 設定 → 開発者 → ローカルMCPサーバー → npa-traffic-accident
   コマンド: C:\Users\yshiw\AppData\Local\Programs\Python\Python312\python.exe
