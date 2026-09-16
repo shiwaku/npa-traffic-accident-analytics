@@ -120,7 +120,7 @@ python -c "import duckdb, mcp; print('OK')"
 > `externally-managed-environment` で弾かれることはなく、venv 無しで問題ない。
 > 使う場合は `python -m venv .venv` のあと
 > `.venv\Scripts\python.exe -m pip install -r mcp_server\requirements.txt` とし、
-> 手順5-2 の `$py = (Get-Command python).Source` を
+> 手順5-1 の `$py = (Get-Command python).Source` を
 > `$py = (Resolve-Path .\.venv\Scripts\python.exe).Path` に置き換える。
 
 ---
@@ -133,7 +133,9 @@ Claude Desktop には**入れ方が2通りあり、設定ファイルの場所�
 どちらか判定して、使うパスを `$cfg` に入れる。そのまま貼る。
 
 ```powershell
-$cfg = if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json" } else { "$env:APPDATA\Claude\claude_desktop_config.json" }
+$msix = "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json"
+$exe  = "$env:APPDATA\Claude\claude_desktop_config.json"
+if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { $cfg = $msix } else { $cfg = $exe }
 "設定ファイル: $cfg"
 "存在するか: " + (Test-Path $cfg)
 ```
@@ -143,7 +145,7 @@ $cfg = if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { "$e
 > **`$cfg` は PowerShell を閉じると消える。**
 > 以降のコマンドで
 > `Get-Content : 引数が null であるため、パラメーター 'Path' にバインドできません`
-> と出たら、**この1行目をもう一度貼る**だけでよい。ウィンドウを開き直したとき、
+> と出たら、**この3行をもう一度貼る**だけでよい。ウィンドウを開き直したとき、
 > PC を再起動したときに起きる。
 
 フォルダをエクスプローラで開くならこれ。
@@ -155,9 +157,70 @@ explorer (Split-Path $cfg)
 
 ---
 
-## 5. 設定ファイルを書く
+## 5. 設定ファイルに登録する
 
-### 5-1. 既にあるならバックアップする
+### 5-1. 登録する
+
+**リポジトリのパスに移動してから**、下をまとめて貼る。既存の設定を読み込んで
+`npa-traffic-accident` を足し、書き戻す。**他の MCP サーバーや `preferences` は残る。**
+
+```powershell
+cd $env:USERPROFILE\npa-traffic-accident-analytics
+$py  = (Get-Command python).Source
+$srv = (Resolve-Path .\mcp_server\server.py).Path
+if ($py -like "*WindowsApps*") { throw "python が Microsoft Store のショートカットです。手順1をやり直してください" }
+
+New-Item -ItemType Directory -Force (Split-Path $cfg) | Out-Null
+if (Test-Path $cfg) { Copy-Item $cfg "$env:TEMP\claude_desktop_config.backup.json" -Force; "バックアップした" }
+
+$raw = ""
+if (Test-Path $cfg) { $raw = "" + (Get-Content $cfg -Raw) }
+if ($raw.Trim()) {
+  try { $j = $raw | ConvertFrom-Json } catch { throw "設定ファイルが JSON として壊れています: $cfg" }
+} else { $j = [pscustomobject]@{} }
+
+if (-not $j.PSObject.Properties['mcpServers']) { $j | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) }
+$entry = [pscustomobject]@{ command = $py; args = @($srv) }
+if ($j.mcpServers.PSObject.Properties['npa-traffic-accident']) { $j.mcpServers.'npa-traffic-accident' = $entry }
+else { $j.mcpServers | Add-Member -NotePropertyName 'npa-traffic-accident' -NotePropertyValue $entry }
+
+foreach ($n in @($j.mcpServers.PSObject.Properties | Where-Object { $_.Name -ne 'npa-traffic-accident' -and (@($_.Value.args) -join ' ') -like '*npa-traffic-accident*server.py*' } | ForEach-Object { $_.Name })) {
+  $j.mcpServers.PSObject.Properties.Remove($n); "別名で入っていた重複を外した: $n"
+}
+
+[IO.File]::WriteAllText($cfg, ($j | ConvertTo-Json -Depth 30), (New-Object Text.UTF8Encoding $false))
+"書き込んだ: $cfg"
+```
+
+**`cd` の行は自分がコードを置いた場所に直す。** 手順2で別の場所に置いたなら、その絶対パス。
+場所が違えば `Resolve-Path` でエラーになって止まり、設定ファイルには何も書かれない。
+
+**手でパスを書き写す場面は無い。** このコマンドが次の3つをやる。
+
+- 実行前に `%TEMP%\claude_desktop_config.backup.json` へバックアップを取る
+- JSON が壊れていたら**何も書かずに止まる**（上書きして悪化させない）
+- 同じ `server.py` が**別の名前で登録済みなら外す**。名前は画面の表示名とログの
+  ファイル名（`mcp-server-<名前>.log`）を決めるので、手順7 と食い違うと
+  成功していても失敗に見える
+
+`パラメーター 'Path' にバインドできません` と出たら `$cfg` が空になっている。
+手順4の3行を貼り直す。
+
+### 5-2. 入ったか確認する
+
+```powershell
+(Get-Content $cfg -Raw | ConvertFrom-Json).mcpServers | ConvertTo-Json -Depth 5
+```
+
+`npa-traffic-accident` と自分の Python・`server.py` のパスが出れば**手順6へ**。
+他の MCP サーバーを使っていたなら、それも並んで残っているはず。
+
+### 5-3. 手で編集する場合
+
+5-1 が通ったなら**読まなくてよい**。メモ帳で直接書きたいとき、または
+5-1 がエラーで止まるときだけ、以下でやる。やることは同じ。
+
+#### バックアップする
 
 他の MCP サーバーを使っている場合、この後の編集で壊すと**それも全部使えなくなる**。
 
@@ -165,7 +228,7 @@ explorer (Split-Path $cfg)
 if (Test-Path $cfg) { Copy-Item $cfg "$env:TEMP\claude_desktop_config.backup.json"; "バックアップした" }
 ```
 
-### 5-2. 貼る内容を作る
+#### 貼る内容を作る
 
 **パスを手で書き写さない。** ここで間違えるのが最も多い失敗なので、
 実際のパスから貼れる形を生成する。**リポジトリのパスに移動してから**実行する。
@@ -197,7 +260,7 @@ if ($py -like "*WindowsApps*") { "!! python が Microsoft Store のショート�
 `C:\Users` のように1つで書くと `\U` が壊れた記号と解釈され、**設定ファイル全体が
 読めなくなって MCP サーバーが1つも出なくなる**。上のコマンドはこの変換も済ませている。
 
-### 5-3. ファイルに貼る
+#### ファイルに貼る
 
 手順4で表示されたパスのファイルを開く。
 
@@ -205,7 +268,7 @@ if ($py -like "*WindowsApps*") { "!! python が Microsoft Store のショート�
 notepad $cfg
 ```
 
-**ファイルが空、または新規作成の場合** — 全体をこうする（`...` が 5-2 の出力4行）。
+**ファイルが空、または新規作成の場合** — 全体をこうする（`...` が「貼る内容を作る」の出力4行）。
 
 ```json
 {
@@ -215,7 +278,7 @@ notepad $cfg
 }
 ```
 
-**既に `mcpServers` がある場合** — その `{ }` の中に 5-2 の出力を足す。
+**既に `mcpServers` がある場合** — その `{ }` の中に上の出力を足す。
 **直前の項目の閉じ `}` の後ろにカンマが要る。**
 
 ```json
@@ -228,9 +291,28 @@ notepad $cfg
 }
 ```
 
+**同じサーバーが別の名前で既に入っている場合** — `args` のパスが上の出力と一致するなら、
+中身は既に正しい。**足さずに、名前だけ `npa-traffic-accident` に直す。**
+足すと同じサーバーが二重に登録される。
+
+```json
+{
+  "mcpServers": {
+    "npa-traffic-accident-analytics": {   ← ここだけ "npa-traffic-accident" に直す
+      "command": "...",
+      "args": ["...\\mcp_server\\server.py"]
+    }
+  }
+}
+```
+
+名前は動作そのものには効かないが、**画面の表示名とログファイル名がこの名前で決まる**
+（`mcp-server-<名前>.log`）。手順7 が探すファイル名と食い違うと、成功していても
+「ログが無い」＝失敗に見える。
+
 `mcpServers` 以外のキー（`preferences` など）があっても**消さない**。
 
-### 5-4. 壊れていないか確かめる
+#### 壊れていないか確かめる
 
 保存したら、必ずこれを実行する。
 
@@ -242,7 +324,7 @@ Get-Content $cfg -Raw | ConvertFrom-Json | Out-Null; if ($?) { "JSON OK" }
 その付近の `\\` とカンマを見直す。
 
 `パラメーター 'Path' にバインドできません` と出た場合は JSON の問題ではなく、
-**`$cfg` が消えている**（PowerShell を開き直した）。手順4の1行目を貼り直す。
+**`$cfg` が消えている**（PowerShell を開き直した）。手順4の3行を貼り直す。
 
 `JSON OK` は**「JSON として壊れていない」だけ**で、登録できたことまでは意味しない。
 中身も確かめておく。
@@ -252,6 +334,7 @@ Get-Content $cfg -Raw | ConvertFrom-Json | Out-Null; if ($?) { "JSON OK" }
 ```
 
 `npa-traffic-accident` と自分の書いたパスが出れば手順6へ。`{ }` と空なら貼れていない。
+**名前が1文字でも違っていたらここで直す**（手順7 のログ名がこの名前で決まる）。
 
 ---
 
@@ -274,6 +357,14 @@ Start-Process "shell:AppsFolder\Claude_pzs8sxrjxfjjc!Claude"
 
 （起動コマンドは Microsoft Store 版のもの。インストーラ版はスタートメニューから普通に開く）
 
+**本当に終了できたかを見る。** 起動時刻が今なら、新しい設定を読んでいる。
+
+```powershell
+Get-Process Claude | Where-Object { $_.Path -like "*WindowsApps*" } | Select-Object -First 1 StartTime
+```
+
+古い時刻のままなら、× で閉じただけで終了していない。手順6をやり直す。
+
 ---
 
 ## 7. 繋がったか確認する
@@ -295,8 +386,15 @@ Get-Content "$env:LOCALAPPDATA\Claude\Logs\mcp-server-npa-traffic-accident.log" 
 [info] Server started and connected successfully
 ```
 
+**日時を必ず見る。** ログは前回のものが残っているので、行の日時が再起動より前なら
+それは**今回の記録ではない**（＝まだ繋ぎに行っていない）。ログ中の時刻は UTC なので
+日本時間から9時間引いた値になる。
+
 `Server disconnected` や `Server transport closed unexpectedly` が出ていたら、
 `server.py` が起動できずに即終了している。下の「うまくいかないとき」へ。
+
+ファイルが無いと言われたら、まだ一度も起動していないか、設定のキー名が
+`npa-traffic-accident` になっていない。手順5-2 で名前を確かめる。
 
 ---
 
@@ -328,13 +426,15 @@ Claude Desktop で**新しい会話**を開いて貼る。
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| `パラメーター 'Path' にバインドできません` | `$cfg` が消えた（PowerShell を開き直した） | 手順4の1行目を貼り直す |
-| `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（カンマ抜け・`\\` の書き忘れ） | 手順5-4 を実行。`JSON OK` が出るまで直す |
+| `パラメーター 'Path' にバインドできません` | `$cfg` が消えた（PowerShell を開き直した） | 手順4の3行を貼り直す |
+| `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（カンマ抜け・`\\` の書き忘れ） | 手順5-2 で中身を確認する。壊れているならバックアップから戻して手順5-1 をやり直す |
 | このサーバー**だけ**出ない | 設定ファイルの場所が違う | 手順4をやり直す。Store 版なのに `%APPDATA%\Claude` に書いていないか |
-| ログに `Server disconnected` | `command` の Python が存在しない | 手順5-2 を実行し直して出力をそのまま貼る。`WindowsApps\python.exe` になっていたら手順1へ |
-| ログに `can't open file ... server.py` | `args` のパスが実際の置き場所と違う | **リポジトリのパスに `cd` してから**手順5-2 を実行し直す |
+| ログに `Server disconnected` | `command` の Python が存在しない | 手順5-1 を実行し直す。`WindowsApps\python.exe` と出ていたら手順1へ |
+| ログに `can't open file ... server.py` | `args` のパスが実際の置き場所と違う | **リポジトリのパスに `cd` してから**手順5-1 を実行し直す |
 | ログに `ModuleNotFoundError` | 依存が別の Python に入った | `command` に書いたパスで `<そのパス> -m pip install -r mcp_server\requirements.txt` |
-| ログファイルが無い | 一度も起動を試みていない | 手順6の再起動をやり直す |
+| ログファイルが無い | 一度も起動を試みていない、または設定のキー名が違う（ログ名はキー名で決まる） | 手順6をやり直す。名前は手順5-2 で確認 |
+| ログはあるが**日時が古いまま**更新されない | × で閉じただけで終了していない | 手順6の `StartTime` で起動時刻を確かめる |
+| 同じサーバーが2つ出る | 別の名前で二重に登録した | 手順5-1 を実行し直す（別名の重複は自動で外れる） |
 | 設定を直したのに変わらない | × で閉じただけで終了していない | トレイ右クリック →「終了」→ 起動 |
 | ツールは動くが**グラフや地図が出ず数字だけ** | 表示に対応していない画面で使っている | Claude Desktop なら出る。ターミナルの Claude Code では数字だけ（集計は正常） |
 | 地図は出るが**背景が白い** | 地図タイルの取得が通っていない | ネットワーク（プロキシ等）を確認 |
