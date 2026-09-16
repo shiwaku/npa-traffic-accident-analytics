@@ -51,6 +51,7 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
 | [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | **別のマシン（Mac）の Claude Desktop に入れる手順** |
 | [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | claude.ai から使う（トンネル経由のリモートコネクタ） |
+| [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 上を手で動かす手順（Windows）。コマンドと詰まりどころ |
 | [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |
 | [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 
