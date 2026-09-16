@@ -129,6 +129,9 @@ taskkill //PID <PID> //F
 
 ## quick tunnel で公開する
 
+以下は手順の骨子。**Windows で実際に手を動かすときの逐次手順**（コマンド、疎通確認、
+症状別の対処）は [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md) にまとめてある。
+
 `cloudflared` はインストール済み。アカウント登録も設定ファイルも要らない。
 
 ### 1. トンネルを立てる
@@ -206,6 +209,7 @@ Owner の関与が要る（上の「3. claude.ai に登録する」を参照）�
 
 ## 関連
 
+- 手で動かすときの逐次手順は [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md)
 - ローカルでの描画確認（公式 basic-host + puppeteer）は開発時の手順。リポジトリには入れない
 - 恒久ホスティングと認証の検討は issue #3
 - 仕組みの説明は [HOW_IT_WORKS.md](HOW_IT_WORKS.md)、構成は [DESIGN.md](DESIGN.md)
