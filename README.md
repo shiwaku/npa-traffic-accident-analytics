@@ -50,7 +50,7 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | **いま動いているものの仕組み。質問1つで何が起きるか** |
 | [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
 | [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | **別のマシン（Mac）の Claude Desktop に入れる手順** |
-| [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) | **Windows の Claude Desktop から使う手順（経路A）** |
+| [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) | **Windows で最初に読む。Claude Desktop から使えるようにするまで** |
 | [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | claude.ai から使う（トンネル経由のリモートコネクタ） |
 | [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 上を手で動かす手順（Windows）。コマンドと詰まりどころ |
 | [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |

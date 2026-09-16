@@ -1,238 +1,345 @@
-# Claude Desktop から使う（Windows / 経路A）
+# Claude Desktop から使う（Windows）
 
-**経路A** は Claude Desktop がこのPCの `server.py` を stdio で起動して使う経路。
-claude.ai から使う**経路B**は [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md)。
+**何も準備していない Windows PC** で、Claude Desktop からこのリポジトリの交通事故データ
+（2019〜2024年・1,895,275件）を集計できるようになるまでの手順。
 
-経路Aには**トンネルも組織の Owner 権限も要らない**。サーバーの起動と終了は Desktop が
-面倒を見るので、**手でサーバーを立てる操作は一切ない**。これが経路Bとのいちばん大きな違いで、
-逆に「起動しておく」ことができないため、**設定を変えたら Desktop ごと再起動する**のが作法になる。
+上から順に実行すれば終わる。**所要 15分ほど**（Python が既に入っていれば5分）。
 
-置くのはコードだけで、データ（96.6MB の Parquet）は R2 にある。集計のたびに必要な列だけを
-HTTP Range で読む。ビューの `dist/*.html` はコミット済みなので **Node も npm も要らない**。
+## これができるようになる
 
----
-
-## このPCの現状（2026-09-16 実測）
-
-| 項目 | 値 |
-|---|---|
-| Claude Desktop | `2.110.0.0`（Microsoft Store / MSIX 版） |
-| 設定ファイル | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json` |
-| 登録名 | `npa-traffic-accident` |
-| Python | `3.12.4` / `C:\Users\yshiw\AppData\Local\Programs\Python\Python312\python.exe` |
-| 依存 | `duckdb 1.1.3` / `mcp` 導入済み（venv ではなくこの Python に直接） |
-| リポジトリ | `C:\Users\yshiw\Documents\GIS\npa\npa-traffic-accident-analytics` |
-| 接続 | 確認済み（`Server started and connected successfully`） |
-
-**既に動いているので、下の 1〜3 は入れ直すとき・別のWindows機に入れるときだけ。**
-日常的に使うのは「4. 接続を確認する」以降。
-
----
-
-## 手順
-
-### 1. コードを置く
-
-リポジトリは public なので認証は要らない。
-
-```powershell
-git clone https://github.com/shiwaku/npa-traffic-accident-analytics.git C:\Users\<ユーザー名>\npa-traffic-accident-analytics
-cd C:\Users\<ユーザー名>\npa-traffic-accident-analytics
-python -m pip install -r mcp_server\requirements.txt
-```
-
-**Python は 3.10 以上**（`X | None` 記法と mcp パッケージの要件）。
-`python --version` で確認する。
-
-Windows の Python は `C:\Users\<ユーザー名>\AppData\Local\Programs\Python\` 配下に入る
-ユーザーインストールなので、Mac と違って `externally-managed-environment` で弾かれない。
-このPCも venv を作らず、その Python に直接入れている。venv を使う場合は
-`.venv\Scripts\python.exe` を次のステップで指す。
-
-### 2. 設定ファイルに登録する
-
-**Microsoft Store（MSIX）版は `%APPDATA%\Claude` に設定ファイルが無い。**
-パッケージ内にリダイレクトされている。このPCで `%APPDATA%\Claude` は存在しない。
-
-| 入れ方 | 設定ファイルの場所 |
-|---|---|
-| Microsoft Store（MSIX）版 ← **このPC** | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json` |
-| インストーラ（exe）版 | `%APPDATA%\Claude\claude_desktop_config.json` |
-
-どちらか分からなければ、両方 `Test-Path` で見て**存在するほう**が使われている。
-
-```powershell
-Test-Path "$env:APPDATA\Claude\claude_desktop_config.json"
-Test-Path "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json"
-```
-
-エクスプローラで開くならこれが速い。
-
-```powershell
-explorer "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude"
-```
-
-中身はこう書く。ファイルが無ければ新規作成でよい。
-
-```json
-{
-  "mcpServers": {
-    "npa-traffic-accident": {
-      "command": "C:\Users\<ユーザー名>\AppData\Local\Programs\Python\Python312\python.exe",
-      "args": ["C:\Users\<ユーザー名>\npa-traffic-accident-analytics\mcp_server\server.py"]
-    }
-  }
-}
-```
-
-つまずきやすいのはこの4点。
-
-- **JSON なのでバックスラッシュは `\` と二重に書く。** `C:\Users` と書くと `\U` が
-  不正なエスケープになって設定ファイル全体が読めなくなり、**サーバーが1つも出なくなる**
-- **絶対パスのみ。** `~` も `%USERPROFILE%` も展開されない
-- **`python.exe` を絶対パスで指す。** `"command": "python"` でも PATH が通っていれば動くが、
-  別の Python を前に入れた瞬間に依存の入っていない側を掴んで壊れる
-- 既に他のサーバーがあるなら `mcpServers` の中に1項目足すだけ。**直前の項目の末尾にカンマが要る**
-
-保存したら JSON が壊れていないか確かめておく。
-
-```powershell
-Get-Content "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json" -Raw | ConvertFrom-Json | Out-Null; if ($?) { "JSON OK" }
-```
-
-### 3. Claude Desktop を再起動する
-
-**設定は起動時にしか読まれない。** そして注意点が1つある。
-
-**ウィンドウの × では終了しない。** タスクトレイに常駐するだけなので、そのまま起動し直しても
-設定は読み直されない。**タスクトレイのアイコンを右クリック →「終了」**で本当に終わらせる。
-
-```powershell
-# 起動（MSIX 版はパスを直接叩けないのでアプリID指定）
-Start-Process "shell:AppsFolder\Claude_pzs8sxrjxfjjc!Claude"
-```
-
-### 4. 接続を確認する
-
-`設定 → 開発者 → ローカルMCPサーバー` に `npa-traffic-accident` が出ていれば繋がっている。
-
-GUI を見なくても、**ログのほうが確実**。サーバーの stderr もここに出る。
-
-```powershell
-Get-Content "$env:LOCALAPPDATA\Claude\Logs\mcp-server-npa-traffic-accident.log" -Tail 20
-```
-
-**成功の目印**はこの3行。
-
-```
-[info] Using MCP server command: C:\Users\...\python.exe with path: {
-[info] Server started and connected successfully
-[info] Message from server: id=0 result
-```
-
-`Server disconnected` や `Server transport closed unexpectedly` が出ていたら、
-`server.py` が起動に失敗して即死している。下の「つまずいたとき」へ。
-
-起動中かどうかは、Desktop が生やした子プロセスを見ても分かる。
-
-```powershell
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Select-Object ProcessId, CommandLine
-```
-
-### 5. 動作を確認する
-
-[VERIFY_PROMPTS.md](VERIFY_PROMPTS.md) のプロンプトを**新しい会話**で上から貼る。
-最初の2つだけ再掲する。
+Claude Desktop にこう聞くと、グラフ付きで答えが返る。
 
 ```
 生活道路の事故件数を年別に出して。厳密定義で。
 ```
 
-→ `seikatsu_dashboard`（strict）。2019年 65,188 件 … 2024年 45,296 件。
-グラフ付きのビューが出れば描画 OK。
+- **データはダウンロードされない。** 96.6MB の Parquet はクラウド（Cloudflare R2）にあり、
+  集計のたびに必要な列だけを読む。PCに置くのはコードだけ
+- **組織の Owner 権限もトンネルも要らない。** Claude Desktop が PC の中だけで完結して動かす
+- ブラウザの claude.ai から使いたい場合は**この手順では足りない**。
+  [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md) を見る
+
+## 必要なもの
+
+| | 必要 | どこで使うか |
+|---|---|---|
+| Claude Desktop | **必須** | 全体 |
+| Python 3.10 以上 | **必須** | 手順1。無ければ入れる |
+| Git | あると楽 | 手順2。無くても ZIP で代用できる |
+| インターネット接続 | **必須** | 集計のたびに使う |
+
+**Node.js と npm は要らない。** 画面表示に使う `dist\*.html` はリポジトリに入っている。
+
+---
+
+## 準備. PowerShell を開く
+
+以降のコマンドはすべて PowerShell に貼り付ける。
+
+`Windows キー + X` → **「ターミナル」**（または「Windows PowerShell」）を選ぶ。
+管理者権限は要らない。
+
+---
+
+## 1. Python を確認する
+
+```powershell
+python --version
+```
+
+**`Python 3.10.x` 以上が出れば OK。** 次へ進む。
+
+`Python was not found` と出る、または Microsoft Store が開いた場合は入っていない。
+[python.org](https://www.python.org/downloads/windows/) から入れる。インストーラ最初の画面の
+**「Add python.exe to PATH」に必ずチェックを入れる**。入れ終えたら
+**PowerShell を開き直してから** もう一度 `python --version` を実行する。
+
+### Python の場所を控える
+
+あとで設定ファイルに**絶対パスで**書くので、ここで調べておく。
+
+```powershell
+where.exe python
+```
+
+複数行出ることがある。
+
+```
+C:\Users\<ユーザー名>\AppData\Local\Programs\Python\Python312\python.exe
+C:\Users\<ユーザー名>\AppData\Local\Microsoft\WindowsApps\python.exe
+```
+
+**1行目を使う。** `WindowsApps\python.exe` は Microsoft Store を開くだけのショートカットで、
+これを設定に書くと動かない。
+
+この1行目を**「Python のパス」**と呼ぶ。メモしておく。
+
+---
+
+## 2. コードを置く
+
+置き場所はどこでもよいが、この手順では `C:\Users\<ユーザー名>\npa-traffic-accident-analytics`
+に置く。これを**「リポジトリのパス」**と呼ぶ。
+
+**Git がある場合:**
+
+```powershell
+cd $env:USERPROFILE
+git clone https://github.com/shiwaku/npa-traffic-accident-analytics.git
+```
+
+**Git が無い場合:** [リポジトリ](https://github.com/shiwaku/npa-traffic-accident-analytics)
+の緑の `Code` ボタン → `Download ZIP` を押し、展開して上のパスに置く。展開すると
+`npa-traffic-accident-analytics-main` という名前になるので、`-main` を外す。
+
+リポジトリは public なので、どちらの方法でも GitHub のアカウントは要らない。
+
+---
+
+## 3. 依存を入れる
+
+```powershell
+cd $env:USERPROFILE\npa-traffic-accident-analytics
+python -m pip install -r mcp_server\requirements.txt
+```
+
+入るのは `duckdb`（集計エンジン）と `mcp`（Claude と話すための部品）の2つ。
+
+確認する。
+
+```powershell
+python -c "import duckdb, mcp; print('OK')"
+```
+
+`OK` と出れば次へ。
+
+> **venv（仮想環境）について**
+> Windows の Python はユーザー配下に入るので、Mac のように
+> `externally-managed-environment` で弾かれることはなく、venv 無しで問題ない。
+> 使う場合は `python -m venv .venv` のあと
+> `.venv\Scripts\python.exe -m pip install -r mcp_server\requirements.txt` とし、
+> 手順1の「Python のパス」を `.venv\Scripts\python.exe` の絶対パスに読み替える。
+
+---
+
+## 4. 設定ファイルの場所を調べる
+
+Claude Desktop には**入れ方が2通りあり、設定ファイルの場所が違う**。Microsoft Store 版は
+パッケージ内にリダイレクトされていて、よく紹介される `%APPDATA%\Claude` には**無い**。
+
+どちらか判定して、使うパスを表示する。そのまま貼る。
+
+```powershell
+$msix = "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json"
+$exe  = "$env:APPDATA\Claude\claude_desktop_config.json"
+if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { $cfg = $msix } else { $cfg = $exe }
+"設定ファイル: $cfg"
+"存在するか: " + (Test-Path $cfg)
+```
+
+表示されたパスを**「設定ファイルのパス」**として手順5で使う。
+`存在するか: False` でも問題ない。手順5で作る。
+
+**この PowerShell を閉じずに手順5へ進む。** `$cfg` を続けて使う。
+
+フォルダをエクスプローラで開くならこれ。
+
+```powershell
+New-Item -ItemType Directory -Force (Split-Path $cfg) | Out-Null
+explorer (Split-Path $cfg)
+```
+
+---
+
+## 5. 設定ファイルを書く
+
+### 5-1. 既にあるならバックアップする
+
+他の MCP サーバーを使っている場合、この後の編集で壊すと**それも全部使えなくなる**。
+
+```powershell
+if (Test-Path $cfg) { Copy-Item $cfg "$env:TEMP\claude_desktop_config.backup.json"; "バックアップした" }
+```
+
+### 5-2. 中身を書く
+
+手順4で表示されたパスのファイルをメモ帳などで開き（無ければ新規作成して）、次の内容にする。
+
+```json
+{
+  "mcpServers": {
+    "npa-traffic-accident": {
+      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": ["C:\\Users\\<ユーザー名>\\npa-traffic-accident-analytics\\mcp_server\\server.py"]
+    }
+  }
+}
+```
+
+**置き換えるのは2箇所だけ。**
+
+| 場所 | 入れる値 |
+|---|---|
+| `command` | 手順1で控えた**Python のパス** |
+| `args` の中 | **リポジトリのパス** + `\mcp_server\server.py` |
+
+**バックスラッシュは `\\` と2つ重ねる。** JSON ではこれが必要で、`C:\Users` のように1つで書くと
+`\U` が壊れた記号と解釈され、**設定ファイル全体が読めなくなって MCP サーバーが1つも
+出なくなる**。ここが最も多い失敗。
+
+既に他のサーバーが書いてある場合は、`mcpServers` の `{ }` の中に
+`"npa-traffic-accident": { ... }` を足すだけでよい。その際
+**直前の項目の閉じ `}` の後ろにカンマが要る**。
+
+### 5-3. 壊れていないか確かめる
+
+保存したら、必ずこれを実行する。
+
+```powershell
+Get-Content $cfg -Raw | ConvertFrom-Json | Out-Null; if ($?) { "JSON OK" }
+```
+
+**`JSON OK` が出るまで先に進まない。** 出ない場合はエラーに位置が出るので、
+その付近の `\\` とカンマを見直す。
+
+---
+
+## 6. Claude Desktop を再起動する
+
+**設定ファイルは起動したときにしか読まれない。** そして注意点が1つある。
+
+**ウィンドウの × では終了しない。** タスクトレイ（画面右下）に居座るだけなので、
+そのまま開き直しても設定は読み直されない。
+
+1. タスクトレイの Claude アイコンを**右クリック →「終了」**
+2. Claude Desktop を起動し直す
+
+コマンドで終了・起動してもよい。
+
+```powershell
+Get-Process Claude -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*WindowsApps*" } | Stop-Process -Force
+Start-Process "shell:AppsFolder\Claude_pzs8sxrjxfjjc!Claude"
+```
+
+（起動コマンドは Microsoft Store 版のもの。インストーラ版はスタートメニューから普通に開く）
+
+---
+
+## 7. 繋がったか確認する
+
+### 画面で見る
+
+`設定 → 開発者 → ローカルMCPサーバー` に **`npa-traffic-accident`** が出ていれば繋がっている。
+
+### ログで見る（確実）
+
+```powershell
+Get-Content "$env:LOCALAPPDATA\Claude\Logs\mcp-server-npa-traffic-accident.log" -Tail 20
+```
+
+**この2行**があれば成功。
+
+```
+[info] Using MCP server command: C:\...\python.exe with path: {
+[info] Server started and connected successfully
+```
+
+`Server disconnected` や `Server transport closed unexpectedly` が出ていたら、
+`server.py` が起動できずに即終了している。下の「うまくいかないとき」へ。
+
+---
+
+## 8. 使ってみる
+
+Claude Desktop で**新しい会話**を開いて貼る。
+
+```
+生活道路の事故件数を年別に出して。厳密定義で。
+```
+
+グラフ付きの表示で、2019年 **65,188件** … 2024年 **45,296件** と出れば完了。
 
 ```
 新宿駅から半径1kmの2024年の生活道路の事故を地図に出して。中心は 35.6896, 139.7006。
 ```
 
-→ `accident_map`。**該当 82 件・描画 82 件**。背景の地理院ベクトルタイル（淡色）まで
-出れば `_meta.ui.csp` の外部ドメイン宣言も効いている。
+地図が出て **82件** なら、地図表示も動いている。背景の地図タイルまで出れば完璧。
 
-4〜8 はガードレールの確認で、**それらしい数字が返ってきたら不合格**という読み方をする。
+他の確認用プロンプトと期待値は [VERIFY_PROMPTS.md](VERIFY_PROMPTS.md) にある。
+
+**使い始める前に [CLAUDE.md](../CLAUDE.md) を読むこと。** 「生活道路」の定義が2通りある、
+年齢は実年齢ではなく年齢層である、といった**知らずに集計すると
+エラーにならずに間違った数字が出る**前提がまとまっている。
+
+---
+
+## うまくいかないとき
+
+| 症状 | 原因 | 対処 |
+|---|---|---|
+| `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（`\\` の書き忘れが最多） | 手順5-3 を実行。`JSON OK` が出るまで直す |
+| このサーバー**だけ**出ない | 設定ファイルの場所が違う | 手順4をやり直す。Store 版なのに `%APPDATA%\Claude` に書いていないか |
+| ログに `Server disconnected` | `command` の Python が存在しない | 手順1の `where.exe python` の**1行目**を書いているか。`WindowsApps\python.exe` は不可 |
+| ログに `ModuleNotFoundError` | 依存が別の Python に入った | `command` に書いたパスで `<そのパス> -m pip install -r mcp_server\requirements.txt` |
+| ログファイルが無い | 一度も起動を試みていない | 手順6の再起動をやり直す |
+| 設定を直したのに変わらない | × で閉じただけで終了していない | トレイ右クリック →「終了」→ 起動 |
+| ツールは動くが**グラフや地図が出ず数字だけ** | 表示に対応していない画面で使っている | Claude Desktop なら出る。ターミナルの Claude Code では数字だけ（集計は正常） |
+| 地図は出るが**背景が白い** | 地図タイルの取得が通っていない | ネットワーク（プロキシ等）を確認 |
+| 集計が返ってこない | クラウドのデータに届いていない | 下の「サーバー単体で切り分ける」 |
+
+### サーバー単体で切り分ける
+
+原因が**設定ファイル**なのか **`server.py` 自体**なのかを分ける。
+
+```powershell
+cd $env:USERPROFILE\npa-traffic-accident-analytics
+python mcp_server\server.py --http --port 8000
+```
+
+`MCP endpoint: http://127.0.0.1:8000/mcp` と出れば、**依存もクラウドへの接続も含めて
+`server.py` は正常**。原因は設定ファイル側にある。確認できたら `Ctrl + C` で止める。
+
+（これは本来 claude.ai 用のモードだが、起動確認に借りている。Claude Desktop と
+同時に動かしても支障はない）
 
 ---
 
 ## 更新する
 
 ```powershell
-cd C:\Users\yshiw\Documents\GIS\npa\npa-traffic-accident-analytics
+cd $env:USERPROFILE\npa-traffic-accident-analytics
 git pull
 ```
 
-ビューの `dist\*.html` もリポジトリに入っているので `git pull` だけで最新になる。
+画面表示に使う `dist\*.html` もリポジトリに入っているので、`git pull` だけで最新になる。
+ZIP で入れた場合は ZIP を取り直して置き換える。
 
-**反映には Claude Desktop の再起動が要る。** そして
-**子プロセスの `python.exe` を手で `taskkill` しない。** Desktop 側が繋ぎ直せずに固まることがある。
-必ずトレイから「終了」→ 起動の順にする。
-
----
-
-## server.py 側を切り分ける
-
-Desktop が繋がらないとき、原因が「設定ファイル」なのか「`server.py` 自体」なのかを分ける。
-**stdio は Desktop が握るので手で起動して確かめるのは難しい**が、代わりにこの2つで足りる。
-
-```powershell
-# 依存が入っているか
-& "C:\Users\yshiw\AppData\Local\Programs\Python\Python312\python.exe" -c "import duckdb, mcp; print('deps OK')"
-
-# server.py 自体が起動できるか（HTTP モードを借りる。確認できたら Ctrl+C）
-cd C:\Users\yshiw\Documents\GIS\npa\npa-traffic-accident-analytics
-python mcp_server\server.py --http --port 8000
-```
-
-`MCP endpoint: http://127.0.0.1:8000/mcp` が出れば、**import も R2 への接続も含めて
-`server.py` は健全**。それでも Desktop から見えないなら原因は設定ファイル側にある。
-
-この HTTP モードは経路Bで使うものだが、**経路Aと同時に動かしても問題ない**
-（別プロセスで、データは読み取り専用）。
+**反映には Claude Desktop の再起動が要る**（手順6）。このとき
+**`python.exe` を手で終了させない。** Claude Desktop が繋ぎ直せずに固まることがある。
+必ずトレイの「終了」から Desktop ごと終わらせる。
 
 ---
 
-## つまずいたとき
+## 付録: この手順を通した環境
 
-| 症状 | 原因 | 対処 |
-|---|---|---|
-| `設定 → 開発者` にサーバーが1つも出ない | JSON が壊れている（`\` の書き忘れが多い） | 上の `ConvertFrom-Json` で検証。直したら Desktop を再起動 |
-| このサーバーだけ出ない | 設定ファイルの場所が違う（MSIX 版なのに `%APPDATA%\Claude` に書いた） | 「2. 設定ファイルに登録する」の表で場所を確認 |
-| ログに `Server disconnected` | `command` の Python が存在しない／依存が入っていない | 「server.py 側を切り分ける」の2コマンドを実行 |
-| ログに `ModuleNotFoundError` | 依存を別の Python に入れた | `command` が指す Python で `pip install -r mcp_server\requirements.txt` |
-| 設定を直したのに変わらない | × で閉じただけで終了していない | タスクトレイ右クリック →「終了」→ 起動 |
-| `git pull` したのに古い挙動のまま | 同上。Desktop の再起動が要る | 同上 |
-| ツールは見えるがビューが出ず数字だけ | ホストが MCP Apps をネゴシエートしていない | Claude Desktop なら描画される。ターミナルの Claude Code は数字だけ（集計としては正常） |
-| 地図は出るが背景が白い | `_meta.ui.csp` の外部ドメイン宣言が効いていない | サーバー側の CSP 宣言を確認 |
-| 集計が返ってこない | R2 へ出られていない（オフライン・プロキシ） | 「server.py 側を切り分ける」の HTTP モードで起動を確認 |
+2026-09-16 に下記で通している。異なっていても手順は変わらない。
 
----
+| | |
+|---|---|
+| OS | Windows 11 Pro |
+| Claude Desktop | 2.110.0.0（Microsoft Store / MSIX 版） |
+| Python | 3.12.4（`AppData\Local\Programs\Python\Python312`） |
+| 依存 | duckdb 1.1.3 / mcp |
 
-## 経路Bとの関係
-
-**同時に動かしてよい。** 別プロセスで互いを知らず、データは R2 上の読み取り専用 Parquet なので
-競合しない。経路Bのトンネルとサーバーを落としても、経路Aは動き続ける。
-
-ただし **Claude Desktop 側で経路Bのリモートコネクタを有効にしない**。
-開発者タブの stdio と同じツールが2組並んで紛らわしくなる。
-
-`mcpServers` は**アカウント単位ではなくPC単位**なので、会社アカウントに切り替えても
-同じサーバーが見える。**組織の Owner 権限は要らない**（同じファイル内の他の設定が
-`...ByAccount` でアカウントごとに分かれているのに対し、`mcpServers` は分かれていない）。
+掲載した PowerShell コマンドはこの環境で実行して確認している。
 
 ---
 
 ## 関連
 
+- **[CLAUDE.md](../CLAUDE.md) — 集計を始める前に読む。定義を知らないと間違った数字が出る**
 - Mac に入れる手順は [SETUP_MAC.md](SETUP_MAC.md)
-- 経路B（claude.ai）の逐次手順は [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md)、
-  仕組みと構成図は [REMOTE_CONNECTOR.md](REMOTE_CONNECTOR.md)
-- 動作確認プロンプトの全文と期待値は [VERIFY_PROMPTS.md](VERIFY_PROMPTS.md)
+- ブラウザの claude.ai から使う手順は [REMOTE_CONNECTOR_MANUAL.md](REMOTE_CONNECTOR_MANUAL.md)、
+  その仕組みと構成図は [REMOTE_CONNECTOR.md](REMOTE_CONNECTOR.md)
+- 確認用プロンプトの全文と期待値は [VERIFY_PROMPTS.md](VERIFY_PROMPTS.md)
 - 質問1つで何が起きるかは [HOW_IT_WORKS.md](HOW_IT_WORKS.md)
