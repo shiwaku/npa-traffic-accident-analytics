@@ -130,20 +130,21 @@ python -c "import duckdb, mcp; print('OK')"
 Claude Desktop には**入れ方が2通りあり、設定ファイルの場所が違う**。Microsoft Store 版は
 パッケージ内にリダイレクトされていて、よく紹介される `%APPDATA%\Claude` には**無い**。
 
-どちらか判定して、使うパスを表示する。そのまま貼る。
+どちらか判定して、使うパスを `$cfg` に入れる。そのまま貼る。
 
 ```powershell
-$msix = "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json"
-$exe  = "$env:APPDATA\Claude\claude_desktop_config.json"
-if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { $cfg = $msix } else { $cfg = $exe }
+$cfg = if (Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue) { "$env:LOCALAPPDATA\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json" } else { "$env:APPDATA\Claude\claude_desktop_config.json" }
 "設定ファイル: $cfg"
 "存在するか: " + (Test-Path $cfg)
 ```
 
-表示されたパスを**「設定ファイルのパス」**として手順5で使う。
 `存在するか: False` でも問題ない。手順5で作る。
 
-**この PowerShell を閉じずに手順5へ進む。** `$cfg` を続けて使う。
+> **`$cfg` は PowerShell を閉じると消える。**
+> 以降のコマンドで
+> `Get-Content : 引数が null であるため、パラメーター 'Path' にバインドできません`
+> と出たら、**この1行目をもう一度貼る**だけでよい。ウィンドウを開き直したとき、
+> PC を再起動したときに起きる。
 
 フォルダをエクスプローラで開くならこれ。
 
@@ -240,6 +241,18 @@ Get-Content $cfg -Raw | ConvertFrom-Json | Out-Null; if ($?) { "JSON OK" }
 **`JSON OK` が出るまで先に進まない。** 出ない場合はエラーに位置が出るので、
 その付近の `\\` とカンマを見直す。
 
+`パラメーター 'Path' にバインドできません` と出た場合は JSON の問題ではなく、
+**`$cfg` が消えている**（PowerShell を開き直した）。手順4の1行目を貼り直す。
+
+`JSON OK` は**「JSON として壊れていない」だけ**で、登録できたことまでは意味しない。
+中身も確かめておく。
+
+```powershell
+(Get-Content $cfg -Raw | ConvertFrom-Json).mcpServers | ConvertTo-Json -Depth 5
+```
+
+`npa-traffic-accident` と自分の書いたパスが出れば手順6へ。`{ }` と空なら貼れていない。
+
 ---
 
 ## 6. Claude Desktop を再起動する
@@ -315,6 +328,7 @@ Claude Desktop で**新しい会話**を開いて貼る。
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
+| `パラメーター 'Path' にバインドできません` | `$cfg` が消えた（PowerShell を開き直した） | 手順4の1行目を貼り直す |
 | `設定 → 開発者` にサーバーが**1つも**出ない | JSON が壊れている（カンマ抜け・`\\` の書き忘れ） | 手順5-4 を実行。`JSON OK` が出るまで直す |
 | このサーバー**だけ**出ない | 設定ファイルの場所が違う | 手順4をやり直す。Store 版なのに `%APPDATA%\Claude` に書いていないか |
 | ログに `Server disconnected` | `command` の Python が存在しない | 手順5-2 を実行し直して出力をそのまま貼る。`WindowsApps\python.exe` になっていたら手順1へ |
