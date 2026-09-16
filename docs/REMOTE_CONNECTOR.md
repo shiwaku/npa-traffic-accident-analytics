@@ -20,7 +20,7 @@ flowchart TB
         web["claude.ai ブラウザ"]
     end
 
-    subgraph pc["このPC"]
+    subgraph pc["ローカルPC"]
         tunnel["cloudflared"]
         stdio["server.py stdio<br/>Desktop が起動する"]
         http["server.py --http<br/>127.0.0.1:8000"]
@@ -52,6 +52,39 @@ flowchart TB
 | ビューの描画 | **確認済み** | **確認済み**（2026-09-15） |
 | 他人に配れるか | 各自がPython+リポジトリを入れる必要あり | 組織にコネクタを追加すれば不要 |
 | 追加できる人 | 自分 | **組織の Owner のみ**（Team/Enterprise） |
+
+### 図の3つの言葉
+
+**cloudflared** — Cloudflare が配っている実行ファイル1つ（`C:\Program Files (x86)\cloudflared\cloudflared.exe`）。
+役割は**中継だけ**で、集計のことは何も知らない。外から来た HTTP リクエストを
+`127.0.0.1:8000` の `server.py` に渡し、返ってきたものを送り返す。
+
+**ホスト名.trycloudflare.com（エッジ）** — Cloudflare が世界中に持っているサーバーのうち、
+いちばん近い1台。claude.ai からのリクエストはまずここに届く。`trycloudflare.com` は
+quick tunnel 専用のドメインで、**ホスト名は起動のたびに Cloudflare が勝手に割り当てる**
+（`organisation-dennis-book-curve` のような3〜4語の組み合わせ）。ログの `location=nrt09` が
+どのエッジに繋がったかで、`nrt` は成田。
+
+**トンネル QUIC** — **接続を張る向きが図の矢印と逆である**ことが、ここでいちばん大事な点。
+矢印はリクエストが流れる向きを描いているが、接続自体は `cloudflared` の起動時に
+**ローカルPCから外へ**張っている。外から穴を開けてもらうのではないので、
+**ルータのポート開放もファイアウォールの設定も要らない**。この張りっぱなしの1本を
+トンネルと呼ぶ。
+
+QUIC はその1本が喋っているプロトコル。UDP の上に乗る、HTTP/3 が使っているのと同じもの。
+`cloudflared` は起動時に TCP と QUIC のどちらが通るかを試して選ぶ。
+
+```
+suggested_protocol=quic
+Registered tunnel connection connIndex=0 ... ip=198.41.192.167 location=nrt09 protocol=quic
+```
+
+**QUIC が選ばれるかは環境次第**で、UDP が塞がれている社内網などでは TCP（http2）に落ちる。
+動作としては同じなので、図のラベルとしては「トンネル」が本質で QUIC は実装詳細。
+
+なお **Cloudflare は図に2回出てくるが、R2（データの置き場）とトンネルは別物**。
+cloudflared を止めても R2 のデータは消えないし、Claude Desktop 経由の集計も動く。
+止まるのは claude.ai からの経路だけ。
 
 ---
 
