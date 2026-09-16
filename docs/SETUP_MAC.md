@@ -3,6 +3,8 @@
 会社アカウントの Claude で使いたい場合、**現実的な経路は Claude Desktop の
 ローカルMCPサーバー（stdio）だけ**。理由は [なぜ stdio なのか](#なぜ-stdio-なのか) に書いた。
 
+**Windows は [SETUP_WINDOWS.md](SETUP_WINDOWS.md)。** 設定ファイルの場所と再起動の作法が違う。
+
 置くのは**コードだけ**で、データ（96.6MB の Parquet）は R2 にあるので落ちてこない。
 集計のたびに必要な列だけを HTTP Range で読む。ビューの `dist/*.html` はコミット済みなので
 **Node も npm も要らない**。
