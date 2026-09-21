@@ -53,6 +53,7 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) | **Windows で最初に読む。Claude Desktop から使えるようにするまで** |
 | [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | claude.ai から使う（トンネル経由のリモートコネクタ） |
 | [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 上を手で動かす手順（Windows）。コマンドと詰まりどころ |
+| [deploy/cloudflare/README.md](deploy/cloudflare/README.md) | claude.ai から常時使える形にする（Workers + Containers）。実測値と手順 |
 | [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |
 | [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 

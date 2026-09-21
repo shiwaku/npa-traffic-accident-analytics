@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "npa-traffic-accident-mcp",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // server.py --http をそのままコンテナで動かす。Worker は転送するだけ。
+  "containers": [
+    {
+      "class_name": "McpContainer",
+      "image": "./Dockerfile",
+      "image_build_context": "../..",
+      // lite(256MiB) では DuckDB が足りない見込み。basic = 1/4 vCPU, 1 GiB, 4 GB disk
+      "instance_type": "basic",
+      // MCP セッションはコンテナのメモリ上にあるので、1台に寄せる
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_CONTAINER", "class_name": "McpContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpContainer"] }]
+}
