@@ -15,15 +15,17 @@ claude.ai → Worker(src/worker.ts、転送のみ) → Container(server.py --htt
 | `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）だけをコンテナに通す |
 | `probe.py` | エンドポイントを叩いて応答時間を出す。デプロイ後の確認にも使う |
 
-## 実測（2026-09-21、ローカル Docker、`--memory=1g --cpus=0.25` = basic 相当）
+## 実測（2026-09-21）
 
-| | httpfs で R2 を直接読む（現行） | 起動時に parquet をローカルに落とす（`entrypoint.py`） |
-|---|---|---|
-| コールドスタート（initialize が通るまで） | 18 s | **11.8 s**（うちダウンロード 7.6 s / 96.6 MB） |
-| `seikatsu_dashboard`（全年・全国） | 53 s | **0.96 s** |
-| `aggregate`（年別） | 1.1 s | **0.28 s** |
-| `accident_map`（東京都・20,000点） | 30 s | **2.2 s** |
-| メモリ最大 | 103 MiB | 178 MiB |
+ローカル Docker は `--memory=1g --cpus=0.25`（basic 相当）。実機は `wrangler deploy` 後に `probe.py` で計測。
+
+| | ローカル: httpfs で R2 を直接読む | ローカル: 起動時に parquet を落とす（`entrypoint.py`） | **Cloudflare 実機**（同左） |
+|---|---|---|---|
+| コールドスタート（initialize が通るまで） | 18 s | 11.8 s（うちダウンロード 7.6 s / 96.6 MB） | 初回 79 s（provisioning 込み）。2回目以降は未計測 |
+| `seikatsu_dashboard`（全年・全国） | 53 s | 0.96 s | **0.38 s** |
+| `aggregate`（年別） | 1.1 s | 0.28 s | **0.23 s** |
+| `accident_map`（東京都・20,000点） | 30 s | 2.2 s | **0.88 s** |
+| メモリ最大 | 103 MiB | 178 MiB | — |
 
 **なぜローカルに落とすか。** httpfs は 1 クエリを数十〜数百の Range リクエストに分ける。
 ホストの Python から直接叩いても dashboard 6 s・map 18 s で、コンテナで CPU を絞ると
@@ -47,25 +49,34 @@ claude.ai → Worker(src/worker.ts、転送のみ) → Container(server.py --htt
   `entrypoint.py` は名乗りを変えている。DuckDB の httpfs や curl は通る
 - **地図ビュー（`ui://…/accident-map.html`、1.5 MB）は Python の `mcp` 2.2.0 クライアントだと
   `SSE stream ended without a response` で読めない。** サーバーは curl で見ると 1,573,058 バイトを
-  正しく返しているので、クライアント側の問題。`probe.py` の当該行は無視してよい。claude.ai で
-  描画されるかは実機で確かめる
+  正しく返しているので、クライアント側の問題。`probe.py` の当該行は無視してよい。
+  claude.ai（個人アカウント）からは Worker 経由で描画まで確認済み（2026-09-21）
+- **Team / Enterprise の claude.ai では、custom connector を追加できるのは組織の Owner だけ。**
+  メンバーの Settings → Connectors には Add custom connector が出ない。組織で使うなら Owner に
+  URL を組織の Connectors へ入れてもらう（全メンバーに配られる）。秘密パス方式は URL を知る人
+  全員が使えるので、組織共有まで行くなら下の Access MCP portal に差し替える
 - `--allow-host '*'` で Host ヘッダ検証を外している。コンテナには Worker 以外から到達できないので
   問題ないが、コンテナを直接公開する構成に変えるなら戻すこと
 
-## 次にやること（Workers Paid $5/月 の契約後）
+## デプロイ手順（済み。作り直すときも同じ）
 
 ```bash
 cd deploy/cloudflare
 npm install
 npx wrangler login
-npx wrangler secret put SECRET_PATH        # ランダム文字列。/s/<これ>/mcp 以外は 404 になる
 npx wrangler deploy                         # Docker が動いている必要がある。初回は数分待つ
+python -c "import secrets; print(secrets.token_urlsafe(24))" | npx wrangler secret put SECRET_PATH
 python probe.py cold https://<worker>.workers.dev/s/<SECRET_PATH>/mcp
 python probe.py run  https://<worker>.workers.dev/s/<SECRET_PATH>/mcp
 ```
 
-その後 claude.ai の Settings → Connectors → Add custom connector に上の URL を登録し、
-`seikatsu_dashboard` と `accident_map` が描画されることを確認する。
+`secret put` は Worker が存在してからでないと通らないので `deploy` が先。その間の数十秒は
+`/mcp` が秘密パスなしで開くが、公開データの読み取り専用なので気にしない。
+秘密パスの値は生成時に控えておく（Cloudflare 側からは読み出せない。失くしたら `secret put` し直す）。
+
+現在のデプロイ: `https://npa-traffic-accident-mcp.shi-works-worker.workers.dev`（Worker 名
+`npa-traffic-accident-mcp`、アカウント `993e6751…`）。秘密パス付きの URL は
+claude.ai の Settings → Connectors → Add custom connector に登録済み（OAuth 欄は空）。
 
 社内共有まで見込むなら、秘密パスの代わりに
 [Cloudflare Access の MCP server portal](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)
