@@ -1,21 +1,33 @@
 # npa-traffic-accident-analytics
 
 警察庁交通事故統計オープンデータ（2019〜2024年、1,895,275件）を Cloudflare R2 上の
-GeoParquet として公開し、Claude Code との対話で集計・可視化する。
+GeoParquet として公開し、Claude との対話で集計・可視化する。
 
-サーバもデータベースもWebアプリも持たない。**R2 上のファイル1つと `CLAUDE.md` だけ**で成立する。
+データベースもWebアプリも持たない。**R2 上のファイル1つと `CLAUDE.md`**、
+そしてそれを読む小さな MCP サーバーだけで成立する。
 
 ```
 「生活道路の若年層の事故件数の経年推移」
    ↓
-Claude Code ── CLAUDE.md の定義を読んで SQL を組み立てる
+MCPサーバー ── CLAUDE.md の定義に沿って SQL を組み立てる
    ↓
-DuckDB + httpfs ── HTTP Range で必要な列だけ取得（約4MB）
+DuckDB ── GeoParquet から必要な列だけ読む
    ↓
 Cloudflare R2 / shi-works.com
    ↓
-表（ターミナル）/ グラフ・地図（Artifact）
+表（ターミナル）/ グラフ・地図（MCP Apps のビュー）
 ```
+
+サーバーの置き場所は2通りある。**どちらも同じ `mcp_server/server.py`** で、
+使えるツールも返る数字も変わらない。
+
+| | サーバー | データの読み方 | 手順 |
+|---|---|---|---|
+| Claude Desktop / Claude Code | 手元のPCで stdio。常駐しない | httpfs で HTTP Range（約4MB） | [SETUP_WINDOWS](docs/SETUP_WINDOWS.md) / [SETUP_MAC](docs/SETUP_MAC.md) |
+| claude.ai | Cloudflare Containers。使うと起き、10分使わなければ寝る | 起動時に parquet を落としてローカル読み | [deploy/cloudflare/](deploy/cloudflare/README.md) |
+
+地図（`accident_map`）が一度に描ける点は `max_points`（既定 5,000・上限 20,000）まで。
+超えた分は間引かれるので、**描画件数を事故件数と読まないこと**。件数は `counts.該当` を見る。
 
 ## データ
 
@@ -51,9 +63,9 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
 | [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | **別のマシン（Mac）の Claude Desktop に入れる手順** |
 | [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) | **Windows で最初に読む。Claude Desktop から使えるようにするまで** |
-| [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | claude.ai から使う（トンネル経由のリモートコネクタ） |
-| [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 上を手で動かす手順（Windows）。コマンドと詰まりどころ |
-| [deploy/cloudflare/README.md](deploy/cloudflare/README.md) | claude.ai から常時使える形にする（Workers + Containers）。実測値と手順 |
+| [deploy/cloudflare/README.md](deploy/cloudflare/README.md) | **claude.ai から使う（現役）。** Workers + Containers。実測値・課金・手順 |
+| [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | 〈旧方式〉トンネル経由のリモートコネクタ。URL が毎回変わり PC に依存する |
+| [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 〈旧方式〉上を手で動かす手順（Windows）。コマンドと詰まりどころ |
 | [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |
 | [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 
