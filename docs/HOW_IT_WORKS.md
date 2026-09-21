@@ -206,11 +206,15 @@ localhost しか通さない。トンネルや独自ドメイン越しに公開�
 |---|---|---|---|---|
 | Cloudflare 名前付きトンネル | ○（`shi-works.com` のサブドメイン） | PCに依存 | 無料 | 未着手 |
 | 小さなVM（Fly.io / Railway 等） | ○ | ○ | 月数百円〜 | 未着手 |
-| Cloudflare Workers Paid + Containers | ○ | ○ | $5/月 | **ローカル Docker で実測済み**。[deploy/cloudflare/](../deploy/cloudflare/README.md) |
+| **Cloudflare Workers Paid + Containers** | ○ | ○ | $5〜12/月 | **採用・稼働中**。[deploy/cloudflare/](../deploy/cloudflare/README.md) |
 | Cloudflare Workers Paid + duckdb-wasm | ○ | ○ | $5/月 | 不採用（メモリ128MBの壁、コードの書き換えが要る） |
 
 Containers なら `server.py --http` をそのまま動かせる。basic（1/4 vCPU・1 GiB）で、
-parquet を起動時にローカルへ落とせばダッシュボード 1 秒・メモリ 178 MiB。
+parquet を起動時にローカルへ落とせばダッシュボード 0.4 秒・メモリ 178 MiB。
 httpfs で R2 を直接読むと同じ集計が 53 秒かかる（往復回数が効く）。
 
-恒久化の際は認証も併せて決める。
+費用が幅を持つのは、**claude.ai のタブを開いている間コンテナが寝ないため**。
+使い終わったらタブを閉じれば $5 に近づき、開きっぱなしだと $12 になる。
+詳細は [deploy/cloudflare/README.md](../deploy/cloudflare/README.md) の「課金とスリープ」。
+
+認証は当面、URL に秘密文字列を入れる簡易版（Worker 側で `/s/<秘密>/mcp` 以外を404）。
