@@ -348,7 +348,7 @@ OSM・標高・気象などで事故データを補強する段階に進むな�
 
 | # | 項目 | 備考 |
 |---|---|---|
-| 1 | **常設ホスティング先** | 現在は quick tunnel で URL が毎回変わる。常時稼働マシンがあれば Cloudflare 名前付きトンネル（無料・URL固定）、無ければ Fly.io。[HOW_IT_WORKS.md](HOW_IT_WORKS.md) 6章 |
+| 1 | **常設ホスティング先** | 現在は quick tunnel で URL が毎回変わる。Cloudflare Workers + Containers（$5/月、PC 非依存）をローカル Docker で実測済み、契約とデプロイが未了。[deploy/cloudflare/](../deploy/cloudflare/README.md)、[issue #3](https://github.com/shiwaku/npa-traffic-accident-analytics/issues/3) |
 | 2 | **公開時の認証** | URLに秘密文字列を入れる簡易版か、OAuth か。社内共有が目的なら前者で足りる |
 | 3 | 会話に残すスナップショット | ビューはホストの中だけで、共有できる形が残らない。必要なら Artifact に静的な結果を吐くか |
 | 4 | 前段リポジトリへの `資料年次` 列の追加 | 恒久対応。出力CSVの列が増えるため README とリリースノートの追従が要る |

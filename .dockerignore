@@ -1,0 +1,7 @@
+# Docker のビルドコンテキストはリポジトリ直下(deploy/cloudflare/wrangler.jsonc の image_build_context)。
+# サーバーの実行に要るものだけを許可リストで入れる。
+*
+!mcp_server/requirements.txt
+!mcp_server/*.py
+!mcp_server/app/dist/
+!deploy/cloudflare/entrypoint.py

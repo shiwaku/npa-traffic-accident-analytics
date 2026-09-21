@@ -206,9 +206,11 @@ localhost しか通さない。トンネルや独自ドメイン越しに公開�
 |---|---|---|---|---|
 | Cloudflare 名前付きトンネル | ○（`shi-works.com` のサブドメイン） | PCに依存 | 無料 | 未着手 |
 | 小さなVM（Fly.io / Railway 等） | ○ | ○ | 月数百円〜 | 未着手 |
-| Cloudflare Workers Paid + duckdb-wasm | ○ | ○ | $5/月 | **未検証**（メモリ128MBの壁） |
+| Cloudflare Workers Paid + Containers | ○ | ○ | $5/月 | **ローカル Docker で実測済み**。[deploy/cloudflare/](../deploy/cloudflare/README.md) |
+| Cloudflare Workers Paid + duckdb-wasm | ○ | ○ | $5/月 | 不採用（メモリ128MBの壁、コードの書き換えが要る） |
 
-Workers はバンドル64MiB・CPU時間はクリアするが、35.7MBのwasmを読み込んだうえで
-DuckDBのヒープを128MB以内に収められるかが分からない。実測が要る。
+Containers なら `server.py --http` をそのまま動かせる。basic（1/4 vCPU・1 GiB）で、
+parquet を起動時にローカルへ落とせばダッシュボード 1 秒・メモリ 178 MiB。
+httpfs で R2 を直接読むと同じ集計が 53 秒かかる（往復回数が効く）。
 
 恒久化の際は認証も併せて決める。
