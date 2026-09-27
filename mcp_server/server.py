@@ -18,6 +18,7 @@ import argparse
 import os
 import re
 import sys
+import threading
 import unicodedata
 from typing import Any, Literal
 
@@ -25,6 +26,9 @@ import duckdb
 from mcp.server.apps import Apps, client_supports_apps
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.context import Context
+# ToolError 以外の例外は SDK が「予期しないエラー」として中身を隠し、定型文しか返さない。
+# 利用者の指定の誤りを Claude に伝えたい案内は、すべて ToolError で出す
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -63,29 +67,61 @@ GROUP_COLUMNS = {
     "party_type_b": '"当事者種別（当事者B）"',
 }
 
-_con: duckdb.DuckDBPyConnection | None = None
+# run_sql の実行時間の上限。1/4 vCPU のコンテナを全員で共有するので、1つの重いクエリで止めない
+RUN_SQL_TIMEOUT_S = 20.0
+
+_db: duckdb.DuckDBPyConnection | None = None
+_db_lock = threading.Lock()
 _pref_map: dict[str, list[str]] = {}
 _known_labels: set[str] = set()
 
 
-def con() -> duckdb.DuckDBPyConnection:
-    global _con
-    if _con is None:
-        c = duckdb.connect()
+def _open_db() -> duckdb.DuckDBPyConnection:
+    """データベースを開き、parquet 以外を読めないように閉じる。
+
+    run_sql は利用者の SQL をそのまま実行する。DuckDB は SELECT 文の中でもファイルや
+    URL を読む関数を使えるので、外部アクセスを止め、読めるパスを parquet 1つに絞る。
+    設定は lock_configuration で固め、SQL から SET で戻せないようにする。
+    拡張(httpfs)はこれより前に読み込んでおく。止めた後は INSTALL / LOAD もできない。
+    """
+    # 保存済みの認証情報(~/.duckdb/stored_secrets)を読みに行くと、外部アクセスを止めた後に落ちる
+    c = duckdb.connect(config={"allow_persistent_secrets": False})
+    if PARQUET_URL.startswith("http"):
         c.execute("INSTALL httpfs; LOAD httpfs;")
-        c.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{PARQUET_URL}')")
-        _con = c
-        _build_lookups()
-    return _con
+    try:
+        c.execute(f"SET allowed_paths = ['{PARQUET_URL}']")
+    except duckdb.CatalogException:
+        raise RuntimeError(f"DuckDB {duckdb.__version__} は読めるパスを制限できない。1.2.2 以上が要る: "
+                           "pip install -U -r mcp_server/requirements.txt") from None
+    c.execute("SET enable_external_access = false")
+    c.execute("SET lock_configuration = true")
+    c.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{PARQUET_URL}')")
+    return c
 
 
-def _build_lookups() -> None:
+def con() -> duckdb.DuckDBPyConnection:
+    """呼び出しごとの接続(cursor)を返す。
+
+    ツールは MCP SDK がスレッドで並列に実行する。1本の接続を複数スレッドで共有すると
+    プロセスごと落ちる(40並列で Segmentation fault を再現)。cursor は同じデータベースを
+    指す別の接続で、ビューも設定もそのまま引き継ぐ。
+    """
+    global _db
+    with _db_lock:
+        if _db is None:
+            db = _open_db()
+            _build_lookups(db)
+            _db = db
+        return _db.cursor()
+
+
+def _build_lookups(c: duckdb.DuckDBPyConnection) -> None:
     """都道府県の名寄せ表と、既知ラベルの集合を作る。
 
     元データの都道府県名は51種。北海道が方面本部別に分かれ、「東京」「大阪」に
     都・府が付かない。利用者が「東京都」「北海道」と書いても通るようにする。
     """
-    rows = [r[0] for r in _con.execute(
+    rows = [r[0] for r in c.execute(
         'SELECT DISTINCT "都道府県名" FROM honhyo WHERE "都道府県名" IS NOT NULL').fetchall()]
     for raw in rows:
         keys = {raw}
@@ -136,7 +172,7 @@ def _codes_to_labels(codes: list[str], table: dict[str, list[str]], what: str) -
             continue
         out.extend(labels)
     if unknown:
-        raise ValueError(
+        raise ToolError(
             f"{what} に未知のコード {unknown} が指定された。"
             f"list_values('{what}') で有効なコードを確認すること")
     return out
@@ -152,7 +188,7 @@ def _expand_prefecture(prefecture: list[str]) -> list[str]:
     for p in prefecture:
         hit = _pref_map.get(p) or _pref_map.get(_repair(p)[0])
         if not hit:
-            raise ValueError(f"未知の都道府県 '{p}'。list_values('prefecture') を参照")
+            raise ToolError(f"未知の都道府県 '{p}'。list_values('prefecture') を参照")
         expanded.extend(hit)
     return expanded
 
@@ -217,7 +253,7 @@ def _filters(
 
     if seikatsu:
         if road_width:
-            raise ValueError("seikatsu と road_width は同時に指定できない")
+            raise ToolError("seikatsu と road_width は同時に指定できない")
         road_width = list(definitions.SEIKATSU[seikatsu].road_width)
         notes.append(definitions.seikatsu_note(seikatsu))
     if road_width:
@@ -265,12 +301,12 @@ def _filters(
 
     if radius_m is not None:
         if center_lat is None or center_lon is None:
-            raise ValueError("radius_m を使うときは center_lat と center_lon も渡すこと")
+            raise ToolError("radius_m を使うときは center_lat と center_lon も渡すこと")
         if radius_m <= 0:
-            raise ValueError("radius_m は正の数")
+            raise ToolError("radius_m は正の数")
         # 緯度経度の取り違えはよくある間違いで、黙って0件になると原因が分からない
         if not (20.0 <= center_lat <= 46.0 and 122.0 <= center_lon <= 154.0):
-            raise ValueError(
+            raise ToolError(
                 f"center_lat={center_lat} / center_lon={center_lon} が日本の範囲外。"
                 "緯度(北緯、35前後)と経度(東経、139前後)を取り違えていないか確認すること")
         box, exact = _radius_sql(center_lat, center_lon, radius_m)
@@ -282,7 +318,7 @@ def _filters(
         scope_pref = (f"半径{radius_m:.0f}m以内" if scope_pref == "全国"
                       else f"{scope_pref}／半径{radius_m:.0f}m以内")
     elif center_lat is not None or center_lon is not None:
-        raise ValueError("center_lat / center_lon を使うときは radius_m も渡すこと")
+        raise ToolError("center_lat / center_lon を使うときは radius_m も渡すこと")
 
     return where, notes, scope_pref
 
@@ -402,7 +438,7 @@ def seikatsu_dashboard(
 ) -> CallToolResult:
     c = con()
     if year_from > year_to:
-        raise ValueError("year_from が year_to より大きい")
+        raise ToolError("year_from が year_to より大きい")
 
     # ビューが描画されるのは、クライアントが io.modelcontextprotocol/ui を
     # ネゴシエートしたときだけ。していない相手には数字だけを返し、注記で伝える。
@@ -445,7 +481,7 @@ def seikatsu_dashboard(
     cols = [d[0] for d in cur.description]
     years = [dict(zip(cols, r)) for r in cur.fetchall()]
     if not years:
-        raise ValueError(f"{year_from}〜{year_to}年に該当する行がない。年やprefectureの指定を確認すること")
+        raise ToolError(f"{year_from}〜{year_to}年に該当する行がない。年やprefectureの指定を確認すること")
 
     base, base_all = years[0]["件数"] or 1, years[0]["全事故件数"] or 1
     for r in years:
@@ -603,7 +639,7 @@ def accident_map_tool(
 ) -> CallToolResult:
     c = con()
     if year_from > year_to:
-        raise ValueError("year_from が year_to より大きい")
+        raise ToolError("year_from が year_to より大きい")
     max_points = max(100, min(int(max_points), _MAX_POINTS_CAP))
     ui_ok = client_supports_apps(ctx)
 
@@ -635,7 +671,7 @@ def accident_map_tool(
         "FROM f").fetchone()
     matched, no_coord = int(matched or 0), int(no_coord or 0)
     if matched == 0:
-        raise ValueError(
+        raise ToolError(
             "条件に合う事故が0件（座標のある行が無い）。条件を緩めるか、"
             "aggregate で件数を確かめること")
 
@@ -855,7 +891,7 @@ def aggregate(
             selects.append(f'{GROUP_COLUMNS[g]} AS "{_GROUP_LABEL.get(g, g)}"')
             groups.append(GROUP_COLUMNS[g])
         else:
-            raise ValueError(f"group_by に未知の項目 '{g}'。使えるのは {sorted(GROUP_COLUMNS)}")
+            raise ToolError(f"group_by に未知の項目 '{g}'。使えるのは {sorted(GROUP_COLUMNS)}")
 
     where, filter_notes, scope_pref = _filters(
         year_col=year_col, year_from=year_from, year_to=year_to,
@@ -992,7 +1028,7 @@ def list_values(field: str) -> dict[str, Any]:
     cols = {"prefecture": "都道府県名", "road_type": "路線名",
             "road_shape": "道路形状", "weather": "天候"}
     if field not in cols:
-        raise ValueError(f"未知の項目 '{field}'")
+        raise ToolError(f"未知の項目 '{field}'")
     rows = c.execute(
         f'SELECT "{cols[field]}" AS value, count(*) AS count FROM honhyo '
         f"GROUP BY 1 ORDER BY 2 DESC LIMIT 60").fetchall()
@@ -1017,9 +1053,9 @@ def run_sql(query: str) -> dict[str, Any]:
     c = con()
     q = query.strip().rstrip(";")
     if not re.match(r"^\s*(SELECT|WITH)\b", q, re.I):
-        raise ValueError("SELECT か WITH で始まるクエリだけ実行できる")
+        raise ToolError("SELECT か WITH で始まるクエリだけ実行できる")
     if re.search(r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|ATTACH|COPY|INSTALL|LOAD|PRAGMA)\b", q, re.I):
-        raise ValueError("読み取り専用。データを変更する構文は実行できない")
+        raise ToolError("読み取り専用。データを変更する構文は実行できない")
 
     corrections: list[dict[str, str]] = []
 
@@ -1031,12 +1067,35 @@ def run_sql(query: str) -> dict[str, Any]:
         return "'" + fixed.replace("'", "''") + "'"
 
     q = re.sub(r"'((?:[^']|'')*)'", fix, q)
+
+    # 先頭の SELECT だけ見ても、; で区切って2文目を続けられる(全員が使うビューを
+    # 消す等)。DuckDB のパーサで1文の SELECT であることを確かめる
+    try:
+        stmts = duckdb.extract_statements(q)
+    except duckdb.ParserException as e:
+        raise ToolError(f"SQL を解釈できない: {e}") from None
+    if len(stmts) != 1 or stmts[0].type != duckdb.StatementType.SELECT:
+        raise ToolError("SELECT 文を1つだけ実行できる")
     if "limit" not in q.lower():
         q += " LIMIT 500"
 
-    cur = c.execute(q)
-    cols = [d[0] for d in cur.description]
-    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    # 重いクエリで他の利用者を待たせないよう、上限を超えたら中断する
+    timer = threading.Timer(RUN_SQL_TIMEOUT_S, c.interrupt)
+    timer.start()
+    try:
+        cur = c.execute(q)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    except duckdb.PermissionException:
+        raise ToolError("読めるのは honhyo(事故データ)だけ。ファイルや URL を読む関数は使えない") from None
+    except duckdb.InterruptException:
+        raise ToolError(f"{RUN_SQL_TIMEOUT_S:.0f}秒で終わらなかったため中断した。"
+                         "条件を絞るか、aggregate で表現できないか確認すること") from None
+    except duckdb.Error as e:
+        # 列名の誤りや型の不一致。中身を返さないと Claude が SQL を直せない
+        raise ToolError(f"SQL の実行に失敗した: {e}") from None
+    finally:
+        timer.cancel()
     out: dict[str, Any] = {"rows": rows, "row_count": len(rows), "sql": q}
     if corrections:
         out["corrections"] = corrections

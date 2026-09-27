@@ -432,6 +432,7 @@ Claude Desktop で**新しい会話**を開いて貼る。
 | ログに `Server disconnected` | `command` の Python が存在しない | 手順5-1 を実行し直す。`WindowsApps\python.exe` と出ていたら手順1へ |
 | ログに `can't open file ... server.py` | `args` のパスが実際の置き場所と違う | **リポジトリのパスに `cd` してから**手順5-1 を実行し直す |
 | ログに `ModuleNotFoundError` | 依存が別の Python に入った | `command` に書いたパスで `<そのパス> -m pip install -r mcp_server\requirements.txt` |
+| ログに `読めるパスを制限できない` | DuckDB が古い（1.2.2 以上が要る） | `<そのパス> -m pip install -U -r mcp_server\requirements.txt` |
 | ログファイルが無い | 一度も起動を試みていない、または設定のキー名が違う（ログ名はキー名で決まる） | 手順6をやり直す。名前は手順5-2 で確認 |
 | ログはあるが**日時が古いまま**更新されない | × で閉じただけで終了していない | 手順6の `StartTime` で起動時刻を確かめる |
 | 同じサーバーが2つ出る | 別の名前で二重に登録した | 手順5-1 を実行し直す（別名の重複は自動で外れる） |
@@ -482,7 +483,7 @@ ZIP で入れた場合は ZIP を取り直して置き換える。
 | OS | Windows 11 Pro |
 | Claude Desktop | 2.110.0.0（Microsoft Store / MSIX 版） |
 | Python | 3.12.4（`AppData\Local\Programs\Python\Python312`） |
-| 依存 | duckdb 1.1.3 / mcp |
+| 依存 | duckdb 1.1.3 / mcp（その後 duckdb 1.2.2 以上が必須になった） |
 
 掲載した PowerShell コマンドはこの環境で実行して確認している。
 
