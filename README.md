@@ -18,6 +18,8 @@ Cloudflare R2 / shi-works.com
 表（ターミナル）/ グラフ・地図（MCP Apps のビュー）
 ```
 
+詳しい構成図は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
 サーバーの置き場所は2通りある。**どちらも同じ `mcp_server/server.py`** で、
 使えるツールも返る数字も変わらない。
 
@@ -59,6 +61,7 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | | |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | **指標・ディメンション定義の正典。集計前に必読** |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **システム構成図。** 実行時の2経路・ツールとビュー・データを作る流れ |
 | [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | **いま動いているものの仕組み。質問1つで何が起きるか** |
 | [docs/DESIGN.md](docs/DESIGN.md) | 設計書。方式決定の経緯と、採らなかった方式 |
 | [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | **別のマシン（Mac）の Claude Desktop に入れる手順** |
