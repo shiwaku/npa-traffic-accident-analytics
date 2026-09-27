@@ -386,6 +386,7 @@ def _summary_md(p: dict[str, Any]) -> str:
 
 seikatsu は生活道路の定義で、{definitions.seikatsu_summary()}。
 {definitions.SEIKATSU_IMPACT}。既定は {definitions.DEFAULT_SEIKATSU}。
+利用者に結果を示すときは、どちらで数えたかと、その意味を一言添えること。
 ビュー上のトグルでも切り替えられるので、迷ったら {definitions.DEFAULT_SEIKATSU} のまま出して利用者に選ばせてよい。
 
 返り値の years に年次別の件数・指数・構成比、totals に期間合計、notes に
@@ -483,8 +484,9 @@ def seikatsu_dashboard(
         "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
         "definition": {
             "seikatsu": seikatsu,
-            "label": defn.label,
-            "description": defn.description,
+            "label": definitions.seikatsu_label(seikatsu),
+            "description": f"{defn.includes}。{defn.impact}",
+            "intro": definitions.SEIKATSU_INTRO,
             "road_width_labels": width_labels,
             "choices": definitions.seikatsu_choices(),
         },
@@ -728,7 +730,7 @@ def _agg_scope(scope_pref: str, year_basis: str, year_from: int | None,
             else f"{year_from or 2019}〜{year_to or 2024}年")
     parts = [scope_pref, f"{span}（{year_basis}）"]
     if seikatsu:
-        parts.append(f"生活道路 {seikatsu}")
+        parts.append(f"生活道路 {definitions.seikatsu_label(seikatsu)}")
     if fatal_only:
         parts.append("死亡事故のみ")
     if zone30_only:
@@ -788,8 +790,8 @@ def _table_md(p: dict[str, Any]) -> str:
 引数はラベル文字列ではなくコード値で指定する(例: 車道幅員なら '01','02','11')。
 有効なコードは list_values で確認できる。
 
-生活道路を見るときは seikatsu を使う({definitions.seikatsu_summary()})。
-{definitions.SEIKATSU_IMPACT}ので、どちらを使ったか利用者に明示すること。
+生活道路を見るときは seikatsu を使う（{definitions.seikatsu_summary()}）。
+{definitions.SEIKATSU_IMPACT}ので、どちらを使ったかとその意味を利用者に明示すること。
 road_width を直接指定するより意図が明確になる。
 
 年齢と当事者種別を同時に指定すると、同一当事者でのペア判定になる。
@@ -925,6 +927,7 @@ server = MCPServer(
 
 2. 「生活道路」は車道幅員5.5m未満の道路。交差点の扱いで2通りあり、
    {definitions.seikatsu_summary()}。**{definitions.SEIKATSU_IMPACT}**。
+   {definitions.SEIKATSU_OFFICIAL}。
    どちらを使ったか必ず利用者に明示すること。曖昧なら先に確認する。
 
 3. 当事者Aは**過失が最も重い側**、Bはその相手方。被害者区分ではない。

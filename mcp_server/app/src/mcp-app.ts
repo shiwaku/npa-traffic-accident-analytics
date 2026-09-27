@@ -34,7 +34,10 @@ interface Year {
 interface Choice { value: string; label: string; title: string }
 interface Payload {
   scope: string;
-  definition: { seikatsu: string; label: string; description: string; road_width_labels: string[]; choices: Choice[] };
+  definition: {
+    seikatsu: string; label: string; description: string; intro: string;
+    road_width_labels: string[]; choices: Choice[];
+  };
   args: { seikatsu: string; year_from: number; year_to: number; prefecture: string[] | null };
   years: Year[];
   totals: Record<string, number>;
@@ -85,8 +88,10 @@ function render(): void {
     .join("");
 
   scopeEl.textContent = d.scope;
+  // 使った定義だけ見せても、なぜ切り替えられるのかが初めての人には分からない。先に前提を出す
   defnEl.innerHTML =
-    `<b>${esc(d.definition.label)}</b>　${esc(d.definition.description)}` +
+    `${esc(d.definition.intro)}。` +
+    `<br><b>この集計: ${esc(d.definition.label)}</b>　${esc(d.definition.description)}` +
     `<br>車道幅員: ${esc(d.definition.road_width_labels.join(" / "))}`;
 
   kpisEl.innerHTML = (
