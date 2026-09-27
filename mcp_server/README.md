@@ -105,6 +105,22 @@ MapLibre に渡す色は `getComputedStyle(...).getPropertyValue()` の値をそ
 **`run_sql` は文字列リテラルを自動修復する。** 似た別文字が混ざっていた場合は
 正しいラベルに直し、直した内容を `corrections` として返す。黙って直さない。
 
+**DuckDB は parquet 1つしか読めないように閉じている。** `run_sql` は利用者の SQL を
+そのまま実行するが、DuckDB は SELECT 文の中でもファイルや URL を読む関数を使える。
+`_open_db()` で外部アクセスを止め（`enable_external_access=false`）、読めるパスを
+parquet だけに絞り（`allowed_paths`）、`lock_configuration` で SQL から戻せなくしている。
+**DuckDB 1.2.2 以上が要る**（1.1.3 には `allowed_paths` が無く、起動時に止まる）。
+`run_sql` はさらに、DuckDB のパーサで「SELECT 文が1つだけ」であることを確かめ、
+20秒（`RUN_SQL_TIMEOUT_S`）で終わらなければ中断する。
+
+**接続は呼び出しごとに分ける。** MCP SDK は同期関数のツールをスレッドで並列に実行する。
+1本の接続を共有すると、DuckDB 1.1.3 ではプロセスが落ち、1.5.5 では**黙って間違った数字を返す**
+（40並列・160回で正しかったのは18回）。`con()` は毎回 `cursor()` を返す。
+
+**利用者に伝えたいエラーは `ToolError` で出す。** それ以外の例外は SDK が中身を隠し、
+Claude には「Error executing tool ...」しか届かない。緯度経度の取り違えのような案内が
+伝わらなくなる。
+
 **返り値に実行したSQLを含める。** 数字の出どころを確認できるようにするため。
 
 `vocab.py` は `converter/codes` から機械生成したもの。手で編集しないこと。
