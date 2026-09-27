@@ -245,6 +245,7 @@ npa-traffic-accident-analytics/
 │   └── OPERATIONS.md        # データ更新・R2アップロード手順
 ├── mcp_server/
 │   ├── server.py            # MCPサーバー本体
+│   ├── definitions.py       # 集計の定義（生活道路など）。サーバーが使う定義はここだけ
 │   ├── vocab.py             # コード値→ラベル（converter/codes から機械生成）
 │   ├── dashboard.py         # ダッシュボードの ui:// リソース
 │   ├── accident_map.py      # 地図の ui:// リソース（CSPで地理院ドメインを宣言）

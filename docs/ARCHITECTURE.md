@@ -84,8 +84,10 @@ flowchart LR
         t3["aggregate"]
         t4["list_values"]
         t5["run_sql"]
+        defs["definitions.py<br/>生活道路などの定義"]
         vocab["vocab.py<br/>コード値 → ラベル"]
-        t1 & t2 & t3 & t4 --> vocab
+        t1 & t2 & t3 & t4 --> defs
+        defs --> vocab
     end
 
     subgraph views["ビュー（app/dist/*.html・単一HTML）"]
@@ -110,6 +112,9 @@ flowchart LR
 | `aggregate` | 集計表 | なし | 条件で絞って集計。主にこれを使う |
 | `list_values` | — | — | 列が取りうる値とコードの一覧 |
 | `run_sql` | — | — | 生 SQL。似た別文字のリテラルは自動修復して `corrections` で返す |
+
+生活道路の定義（strict / broad）は `definitions.py` だけが持つ。絞り込み・注記・
+Claude に渡す説明文に加え、ビューの切り替えボタンもツールの返り値（`choices`）から作る。
 
 ビューは `mcp_server/app/` を Vite + `vite-plugin-singlefile` で1枚の HTML に畳み込んだもの
 （`npm run build`）。サンドボックス iframe は外部アセットを取りに行けないため、

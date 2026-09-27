@@ -13,10 +13,8 @@
         <h1>生活道路の事故</h1>
         <p class="scope" id="scope">読み込み中…</p>
       </div>
-      <div class="switch" role="group" aria-label="生活道路の定義">
-        <button type="button" id="btn-strict" data-v="strict" aria-pressed="true">strict</button>
-        <button type="button" id="btn-broad" data-v="broad" aria-pressed="false">broad</button>
-      </div>
+      <!-- ボタンはサーバーが返す定義の一覧(definition.choices)から作る -->
+      <div class="switch" id="switch" role="group" aria-label="生活道路の定義"></div>
     </header>
 
     <p class="defn" id="defn"></p>

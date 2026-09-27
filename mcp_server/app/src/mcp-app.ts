@@ -30,9 +30,11 @@ interface Year {
   構成比: number;
   若年構成比: number;
 }
+/** 生活道路の定義ごとの切り替えボタン。定義はサーバー(definitions.py)が持つ */
+interface Choice { value: string; label: string; title: string }
 interface Payload {
   scope: string;
-  definition: { seikatsu: "strict" | "broad"; label: string; description: string; road_width_labels: string[] };
+  definition: { seikatsu: string; label: string; description: string; road_width_labels: string[]; choices: Choice[] };
   args: { seikatsu: string; year_from: number; year_to: number; prefecture: string[] | null };
   years: Year[];
   totals: Record<string, number>;
@@ -51,7 +53,8 @@ const tbodyEl = $("tbody");
 const notesEl = $("notes");
 const sqlEl = $("sql");
 const errEl = $("err");
-const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(".switch button"));
+const switchEl = $("switch");
+const buttons = () => Array.from(switchEl.querySelectorAll<HTMLButtonElement>("button"));
 
 const nf = new Intl.NumberFormat("ja-JP");
 const pct = (x: number, d = 1) => (x * 100).toFixed(d) + "%";
@@ -75,10 +78,11 @@ function render(): void {
   const y = d.years;
   const t = d.totals;
 
-  for (const b of buttons) {
-    b.setAttribute("aria-pressed", String(b.dataset.v === d.definition.seikatsu));
-    b.disabled = false;
-  }
+  switchEl.innerHTML = d.definition.choices
+    .map((c) =>
+      `<button type="button" data-v="${esc(c.value)}" title="${esc(c.title)}"` +
+      ` aria-pressed="${c.value === d.definition.seikatsu}">${esc(c.label)}</button>`)
+    .join("");
 
   scopeEl.textContent = d.scope;
   defnEl.innerHTML =
@@ -185,12 +189,13 @@ app.onhostcontextchanged = handleHostContextChanged;
 app.onteardown = async () => ({});
 app.onerror = (e) => console.error("[seikatsu]", e);
 
-// strict ⇄ broad。会話に戻らず、ビューから同じツールを呼び直す
-for (const b of buttons) {
-  b.addEventListener("click", async () => {
-    if (!state || state.definition.seikatsu === b.dataset.v) return;
+// 定義の切り替え。会話に戻らず、ビューから同じツールを呼び直す。
+// ボタンは描画のたびに作り直すので、クリックは親で受ける
+switchEl.addEventListener("click", async (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-v]");
+    if (!b || !state || state.definition.seikatsu === b.dataset.v) return;
     mainEl.classList.add("busy");
-    for (const x of buttons) x.disabled = true;
+    for (const x of buttons()) x.disabled = true;
     try {
       const result = await app.callServerTool({
         name: "seikatsu_dashboard",
@@ -206,10 +211,9 @@ for (const b of buttons) {
       errEl.textContent = "再集計に失敗した: " + (e instanceof Error ? e.message : String(e));
       errEl.hidden = false;
       mainEl.classList.remove("busy");
-      for (const x of buttons) x.disabled = false;
+      for (const x of buttons()) x.disabled = false;
     }
-  });
-}
+});
 
 // 3. 接続
 app.connect().then(() => {

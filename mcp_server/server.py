@@ -30,6 +30,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import accident_map  # noqa: E402
 import dashboard  # noqa: E402
+import definitions  # noqa: E402
 import table  # noqa: E402
 import vocab  # noqa: E402
 
@@ -37,12 +38,6 @@ PARQUET_URL = os.environ.get(
     "NPA_PARQUET_URL",
     "https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet",
 )
-
-# 生活道路のプリセット。この選択で件数が約2倍変わる
-SEIKATSU = {
-    "strict": ["01", "02", "11"],          # 自道路（交差点は両方）が5.5m未満
-    "broad": ["01", "02", "11", "14", "17"],  # 片側のみ5.5m未満の交差点も含む
-}
 
 # 北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)。
 # 都道府県として集計するときは合算しないと、北海道だけ5つに割れて順位が狂う。
@@ -223,12 +218,8 @@ def _filters(
     if seikatsu:
         if road_width:
             raise ValueError("seikatsu と road_width は同時に指定できない")
-        road_width = SEIKATSU[seikatsu]
-        notes.append(
-            "生活道路 = 車道幅員5.5m未満。"
-            + ("strict(交差する両方が5.5m未満)で絞った。broad にすると件数は約2倍になる"
-               if seikatsu == "strict"
-               else "broad(片側のみ5.5m未満の交差点を含む)で絞った。幹線側の事故も含まれる"))
+        road_width = list(definitions.SEIKATSU[seikatsu].road_width)
+        notes.append(definitions.seikatsu_note(seikatsu))
     if road_width:
         where.append(f'"車道幅員" IN ({_quote(_codes_to_labels(road_width, vocab.ROAD_WIDTH, "road_width"))})')
 
@@ -311,7 +302,8 @@ apps.add_html_resource(
     dashboard.load_html(),
     name="seikatsu_dashboard",
     title="生活道路ダッシュボード",
-    description="生活道路（車道幅員5.5m未満）の事故の経年推移。strict/broad をその場で切り替えられる",
+    description="生活道路（車道幅員5.5m未満）の事故の経年推移。定義（"
+                + "/".join(definitions.SEIKATSU) + "）をその場で切り替えられる",
     prefers_border=True,
 )
 
@@ -336,9 +328,9 @@ apps.add_html_resource(
     prefers_border=True,
 )
 
-# 0〜24歳の歩行者・自転車。自転車は電動アシストを含み、特定小型原付(43)は別区分として含めない
-_YOUNG_AGE = vocab.AGE["01"]
-_WALK_BIKE = vocab.PARTY_TYPE["61"] + vocab.PARTY_TYPE["51"] + vocab.PARTY_TYPE["52"]
+# 0〜24歳の歩行者・自転車。コードは definitions.py
+_YOUNG_AGE = _codes_to_labels(list(definitions.YOUNG_AGE), vocab.AGE, "party_age")
+_WALK_BIKE = _codes_to_labels(list(definitions.WALK_BIKE), vocab.PARTY_TYPE, "party_type")
 
 
 def _young_walk_bike_sql() -> str:
@@ -378,21 +370,13 @@ def _summary_md(p: dict[str, Any]) -> str:
     )
 
 
-_SEIKATSU_DESC = {
-    "strict": "交差点は交差する両方の道路が5.5m未満のものだけを数える。"
-              "broad にすると件数はほぼ倍増する",
-    "broad": "片側のみ5.5m未満の交差点も含める。"
-             "生活道路から幹線に出る出会い頭の事故がここに入る。strict のほぼ2倍になる",
-}
-
-
 @apps.tool(
     resource_uri=dashboard.RESOURCE_URI,
     visibility=["model", "app"],
     title="生活道路ダッシュボード",
     annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
                                 idempotent_hint=True, open_world_hint=False),
-    description="""生活道路（車道幅員5.5m未満）の事故を年次別にまとめ、対話的なダッシュボードとして表示する。
+    description=f"""生活道路（車道幅員5.5m未満）の事故を年次別にまとめ、対話的なダッシュボードとして表示する。
 
 「生活道路の事故はどうなっているか」「生活道路の推移を見せて」のような
 概況の問いにはこれを使う。aggregate より先に試してよい。
@@ -400,8 +384,9 @@ _SEIKATSU_DESC = {
 全事故（母数）を同じクエリで一緒に数えるので、生活道路の減少が全体の減少と
 同じなのか、それより速い/遅いのかがそのまま読める。
 
-seikatsu の strict / broad は件数を約2倍動かす。既定は strict。
-ビュー上のトグルでも切り替えられるので、迷ったら strict のまま出して利用者に選ばせてよい。
+seikatsu は生活道路の定義で、{definitions.seikatsu_summary()}。
+{definitions.SEIKATSU_IMPACT}。既定は {definitions.DEFAULT_SEIKATSU}。
+ビュー上のトグルでも切り替えられるので、迷ったら {definitions.DEFAULT_SEIKATSU} のまま出して利用者に選ばせてよい。
 
 返り値の years に年次別の件数・指数・構成比、totals に期間合計、notes に
 読むときの注意、sql に実行したSQLが入る。ビューが描画されない環境でも
@@ -409,7 +394,7 @@ seikatsu の strict / broad は件数を約2倍動かす。既定は strict。
 )
 def seikatsu_dashboard(
     ctx: Context,
-    seikatsu: Literal["strict", "broad"] = "strict",
+    seikatsu: definitions.SeikatsuName = definitions.DEFAULT_SEIKATSU,
     year_from: int = 2019,
     year_to: int = 2024,
     prefecture: list[str] | None = None,
@@ -422,7 +407,8 @@ def seikatsu_dashboard(
     # ネゴシエートしたときだけ。していない相手には数字だけを返し、注記で伝える。
     ui_ok = client_supports_apps(ctx)
 
-    width_labels = _codes_to_labels(SEIKATSU[seikatsu], vocab.ROAD_WIDTH, "road_width")
+    defn = definitions.SEIKATSU[seikatsu]
+    width_labels = _codes_to_labels(list(defn.road_width), vocab.ROAD_WIDTH, "road_width")
     w = f'"車道幅員" IN ({_quote(width_labels)})'
     young = _young_walk_bike_sql()
 
@@ -476,13 +462,13 @@ def seikatsu_dashboard(
     totals["若年構成比"] = round(totals["若年歩行者自転車"] / n, 5)
     totals["ゾーン30構成比"] = round(totals["ゾーン30"] / n, 5)
 
-    notes.append(f"生活道路 = 車道幅員5.5m未満。{seikatsu}（{_SEIKATSU_DESC[seikatsu]}）")
+    notes.append(definitions.seikatsu_note(seikatsu))
     notes.append("資料年次(計上年)で集計した。各年の全事故件数は警察庁公表値と一致する")
     notes.append("実数だけで語らないこと。全事故の指数(破線)と比べて初めて意味を持つ。"
                  "2020年はコロナ禍で全体が前年比19%減している")
     notes.append("0〜24歳は年齢層コードの最小区分。10代のみ・20代のみの切り出しはできない")
     notes.append("歩行者・自転車は当事者AまたはBで年齢と種別をペア判定し、行単位で1件と数えた"
-                 "(二重計上なし)。自転車は駆動補助機付を含み、特定小型原付は含まない")
+                 "(二重計上なし)。" + definitions.WALK_BIKE_NOTE)
     if min(r["死亡事故"] for r in years) < 50:
         notes.append("死亡事故は年あたり数十件規模。ここからさらに絞るとトレンドとしては読めない")
     notes.append("ゾーン30の件数の増減から規制の効果は判定できない。ゾーン30の指定区域自体が"
@@ -497,10 +483,10 @@ def seikatsu_dashboard(
         "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
         "definition": {
             "seikatsu": seikatsu,
-            "label": "strict（交差点は両方が5.5m未満）" if seikatsu == "strict"
-                     else "broad（片側のみ5.5m未満の交差点を含む）",
-            "description": _SEIKATSU_DESC[seikatsu],
+            "label": defn.label,
+            "description": defn.description,
             "road_width_labels": width_labels,
+            "choices": definitions.seikatsu_choices(),
         },
         "args": {"seikatsu": seikatsu, "year_from": year_from,
                  "year_to": year_to, "prefecture": prefecture},
@@ -599,7 +585,7 @@ def accident_map_tool(
     prefecture: list[str] | None = None,
     year_from: int = 2019,
     year_to: int = 2024,
-    seikatsu: Literal["strict", "broad"] | None = None,
+    seikatsu: definitions.SeikatsuName | None = None,
     road_width: list[str] | None = None,
     party_age: list[str] | None = None,
     party_type: list[str] | None = None,
@@ -700,6 +686,7 @@ def accident_map_tool(
                  "accident_type": accident_type, "day_night": day_night,
                  "fatal_only": fatal_only, "zone30_only": zone30_only,
                  "max_points": max_points},
+        "seikatsu_choices": definitions.seikatsu_choices(),
         "counts": {"該当": matched, "描画": len(points), "抽出": sampled, "座標なし": no_coord},
         "fields": ["lon", "lat", "年", "死亡", "事故類型", "種別A", "種別B",
                    "車道幅員", "昼夜", "ゾーン30", "都道府県"],
@@ -796,12 +783,13 @@ def _table_md(p: dict[str, Any]) -> str:
     title="集計する",
     annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False,
                                 idempotent_hint=True, open_world_hint=False),
-    description="""交通事故を条件で絞り込んで集計する。主にこれを使う。
+    description=f"""交通事故を条件で絞り込んで集計する。主にこれを使う。
 
 引数はラベル文字列ではなくコード値で指定する(例: 車道幅員なら '01','02','11')。
 有効なコードは list_values で確認できる。
 
-生活道路を見るときは seikatsu='strict' または 'broad' を使う。
+生活道路を見るときは seikatsu を使う({definitions.seikatsu_summary()})。
+{definitions.SEIKATSU_IMPACT}ので、どちらを使ったか利用者に明示すること。
 road_width を直接指定するより意図が明確になる。
 
 年齢と当事者種別を同時に指定すると、同一当事者でのペア判定になる。
@@ -836,7 +824,7 @@ def aggregate(
     year_basis: Literal["資料年次", "発生年"] = "資料年次",
     year_from: int | None = None,
     year_to: int | None = None,
-    seikatsu: Literal["strict", "broad"] | None = None,
+    seikatsu: definitions.SeikatsuName | None = None,
     road_width: list[str] | None = None,
     prefecture: list[str] | None = None,
     party_age: list[str] | None = None,
@@ -927,7 +915,7 @@ def aggregate(
 server = MCPServer(
     name="npa-traffic-accident",
     title="警察庁交通事故統計",
-    instructions="""警察庁の交通事故統計(本票、2019〜2024年、1,895,275件)を集計する。
+    instructions=f"""警察庁の交通事故統計(本票、2019〜2024年、1,895,275件)を集計する。
 
 集計の前に必ず知っておくこと:
 
@@ -936,7 +924,7 @@ server = MCPServer(
    聞かれたら、それらしい数字を出さずにこの制約を伝えること。
 
 2. 「生活道路」は車道幅員5.5m未満の道路。交差点の扱いで2通りあり、
-   strict(交差する両方が5.5m未満)と broad(片側のみも含む)で**件数が約2倍変わる**。
+   {definitions.seikatsu_summary()}。**{definitions.SEIKATSU_IMPACT}**。
    どちらを使ったか必ず利用者に明示すること。曖昧なら先に確認する。
 
 3. 当事者Aは**過失が最も重い側**、Bはその相手方。被害者区分ではない。
@@ -990,7 +978,7 @@ def list_values(field: str) -> dict[str, Any]:
                  for code, labels in sorted(table.items())]
         note = None
         if field == "road_width":
-            note = ("生活道路は 01,02,11(strict) または 01,02,11,14,17(broad)。"
+            note = (f"生活道路は {definitions.seikatsu_codes_summary()}。"
                     "aggregate の seikatsu 引数を使うほうが確実")
         elif field == "age":
             note = "年齢層コード。0〜24歳が最小区分で、10代のみの切り出しは不可能"
