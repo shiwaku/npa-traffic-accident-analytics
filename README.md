@@ -69,6 +69,7 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | [deploy/cloudflare/README.md](deploy/cloudflare/README.md) | **claude.ai から使う（現役）。** Workers + Containers。実測値・課金・手順 |
 | [docs/REMOTE_CONNECTOR.md](docs/REMOTE_CONNECTOR.md) | 〈旧方式〉トンネル経由のリモートコネクタ。URL が毎回変わり PC に依存する |
 | [docs/REMOTE_CONNECTOR_MANUAL.md](docs/REMOTE_CONNECTOR_MANUAL.md) | 〈旧方式〉上を手で動かす手順（Windows）。コマンドと詰まりどころ |
+| [docs/ANALYSIS_PROMPTS.md](docs/ANALYSIS_PROMPTS.md) | **実務の分析プロンプト集。** 概況・対象者・道路環境・時期・施策の問いと実測値、答えられない問い |
 | [docs/VERIFY_PROMPTS.md](docs/VERIFY_PROMPTS.md) | 動作確認用プロンプトと期待値 |
 | [mcp_server/README.md](mcp_server/README.md) | MCPサーバーのツールと設計の要点 |
 
