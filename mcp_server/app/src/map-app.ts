@@ -32,7 +32,9 @@ type Point = [
 
 interface Payload {
   scope: string;
-  args: Record<string, unknown> & { seikatsu: "strict" | "broad" | null; fatal_only: boolean };
+  args: Record<string, unknown> & { seikatsu: string | null; fatal_only: boolean };
+  /** 生活道路の定義ごとの切り替えボタン。定義はサーバー(definitions.py)が持つ */
+  seikatsu_choices: { value: string; label: string; title: string }[];
   counts: { 該当: number; 描画: number; 抽出: boolean; 座標なし: number };
   legend: { 事故類型: string[]; 種別: string[]; 車道幅員: string[]; 昼夜: string[]; 都道府県: string[] };
   points: Point[];
@@ -54,7 +56,8 @@ const sqlEl = $("sql");
 const errEl = $("err");
 const expandEl = $<HTMLButtonElement>("expand");
 const fatalEl = $<HTMLInputElement>("fatal");
-const seikatsuButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-seikatsu]"));
+const seikatsuSwitch = document.querySelector(".switch") as HTMLElement;
+const seikatsuButtons = () => Array.from(seikatsuSwitch.querySelectorAll<HTMLButtonElement>("[data-seikatsu]"));
 
 const nf = new Intl.NumberFormat("ja-JP");
 const SRC = "accidents";
@@ -189,7 +192,12 @@ function apply(result: CallToolResult): void {
       `該当 ${nf.format(d.counts.該当)}件のうち ${nf.format(d.counts.描画)}件を無作為抽出して描いている。`
       + "点の密度は比べられるが、点を数えても事故件数にはならない。";
   }
-  for (const b of seikatsuButtons) {
+  // 「絞らない」は HTML に置いたまま、定義ごとのボタンだけ作り直す
+  for (const b of seikatsuButtons()) if (b.dataset.seikatsu !== "none") b.remove();
+  seikatsuSwitch.insertAdjacentHTML("beforeend", d.seikatsu_choices
+    .map((c) => `<button type="button" data-seikatsu="${esc(c.value)}" title="${esc(c.title)}">${esc(c.label)}</button>`)
+    .join(""));
+  for (const b of seikatsuButtons()) {
     b.setAttribute("aria-pressed", String((b.dataset.seikatsu ?? "none") === (d.args.seikatsu ?? "none")));
     b.disabled = false;
   }
@@ -247,7 +255,7 @@ map.on("mouseleave", LAYER, () => { map.getCanvas().style.cursor = ""; });
 async function recall(patch: Record<string, unknown>): Promise<void> {
   if (!state) return;
   mainEl.classList.add("busy");
-  for (const b of seikatsuButtons) b.disabled = true;
+  for (const b of seikatsuButtons()) b.disabled = true;
   fatalEl.disabled = true;
   try {
     apply(await app.callServerTool({ name: "accident_map", arguments: { ...state.args, ...patch } }));
@@ -255,18 +263,19 @@ async function recall(patch: Record<string, unknown>): Promise<void> {
     errEl.textContent = "再集計に失敗した: " + (e instanceof Error ? e.message : String(e));
     errEl.hidden = false;
     mainEl.classList.remove("busy");
-    for (const b of seikatsuButtons) b.disabled = false;
+    for (const b of seikatsuButtons()) b.disabled = false;
     fatalEl.disabled = false;
   }
 }
 
-for (const b of seikatsuButtons) {
-  b.addEventListener("click", () => {
-    const v = b.dataset.seikatsu === "none" ? null : b.dataset.seikatsu;
-    if (!state || (state.args.seikatsu ?? null) === v) return;
-    void recall({ seikatsu: v });
-  });
-}
+// ボタンは描画のたびに作り直すので、クリックは親で受ける
+seikatsuSwitch.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-seikatsu]");
+  if (!b) return;
+  const v = b.dataset.seikatsu === "none" ? null : b.dataset.seikatsu;
+  if (!state || (state.args.seikatsu ?? null) === v) return;
+  void recall({ seikatsu: v });
+});
 fatalEl.addEventListener("change", () => void recall({ fatal_only: fatalEl.checked }));
 
 expandEl.addEventListener("click", async () => {

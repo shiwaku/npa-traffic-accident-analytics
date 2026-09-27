@@ -99,6 +99,9 @@ MapLibre に渡す色は `getComputedStyle(...).getPropertyValue()` の値をそ
 `二輪車－原付自転車`、2024年以降が `二輪車－一般原付自転車`。`vocab.py` は
 2019〜2024の全年次を統合しているので、年次をまたいでも取りこぼさない。
 
+**定義は `definitions.py` の1か所に置く。** 生活道路の定義がコード・注記・説明文・
+ビューに散らばっていると、1か所だけ直して食い違う。下の「定義」参照。
+
 **`run_sql` は文字列リテラルを自動修復する。** 似た別文字が混ざっていた場合は
 正しいラベルに直し、直した内容を `corrections` として返す。黙って直さない。
 
@@ -141,4 +144,19 @@ Claude Desktop（UIを見るならここ）への登録は `claude_desktop_confi
 ## 定義
 
 指標・ディメンションの定義は [../CLAUDE.md](../CLAUDE.md) が正典。
-ツールの説明文とサーバーの instructions はそこから移植している。
+**サーバーが使う定義は `definitions.py` の1か所だけに置く。**
+
+| `definitions.py` にあるもの | そこから作られるもの |
+|---|---|
+| `SEIKATSU`（生活道路 strict / broad のコードと説明） | 絞り込みの WHERE 句、結果の注記、instructions、ツールの説明文、`list_values` の注記、ビューの切り替えボタン |
+| `YOUNG_AGE` / `WALK_BIKE`（0〜24歳の歩行者・自転車） | ダッシュボードの「0〜24歳の歩行者・自転車」列 |
+
+コードは `vocab.py` のキーで書き、ラベル文字列は書かない。import 時に
+「引数の型と `SEIKATSU` のキーが一致しているか」「コードが `vocab.py` にあるか」を確かめ、
+ずれていればサーバーが起動しない。黙って0件になるより早く気づける。
+
+```bash
+python mcp_server/definitions.py   # 定義ごとのコードとラベルを一覧する
+```
+
+定義を足す手順は [../CLAUDE.md](../CLAUDE.md) の「定義を足すとき」。
