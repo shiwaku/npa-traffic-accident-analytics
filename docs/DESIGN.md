@@ -4,7 +4,7 @@
 MCPサーバー経由で、利用者が自分の Claude から日本語で集計する。
 
 - 作成: 2026-09-14
-- 対象: 2019〜2024年（本票）1,895,275件
+- 対象: 2019〜2025年（本票）2,182,298件（2026-10-02 に2025年を追加）
 - 前段: [npa-traffic-accident-converter](../../npa-traffic-accident-converter)
 
 **指標・ディメンションの定義は [CLAUDE.md](../CLAUDE.md) が正典。**
@@ -61,17 +61,17 @@ Cloudflare R2 / shi-works.com
 ### 2.1 なぜ成立するか
 
 Parquet は列指向かつ row group 単位で統計を持つため、必要な列・行群だけを
-Range リクエストで取得できる。96.6MB のうち集計に使う列は 4.6MB 程度しかない。
+Range リクエストで取得できる。111.6MB のうち集計に使う列は 5MB 程度しかない。
 
 | 列 | 圧縮後 |
 |---|---:|
-| 車道幅員 | 0.95 MB |
-| 年齢（当事者A / B） | 1.42 MB |
-| 当事者種別（当事者A / B） | 2.21 MB |
+| 車道幅員 | 0.92 MB |
+| 年齢（当事者A / B） | 1.62 MB |
+| 当事者種別（当事者A / B） | 1.94 MB |
 | 事故内容 | 0.04 MB |
-| 都道府県名 | 0.01 MB |
+| 都道府県名 | 0.02 MB |
 
-座標系の列（geometry・緯度経度4列）が 89.8 MB（全体の73%）を占めるが、
+座標系の列（geometry・緯度経度4列）が 77.9 MB（全体の70%）を占めるが、
 集計では読まれないため転送されない。列を削って軽量版を作る必要はない。
 
 ---
@@ -81,39 +81,40 @@ Range リクエストで取得できる。96.6MB のうち集計に使う列は 
 ### 3.1 R2 上の仕様
 
 ```
-URL   : https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet
+URL   : https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet
 形式  : Parquet (GeoParquet 1.0.0 準拠、EPSG:4326)
 圧縮  : zstd level 9
-rowgrp: 131,072行 × 15
-行数  : 1,895,275
+rowgrp: 131,072行 × 17（最後のみ85,146行）
+行数  : 2,182,298
 列数  : 73 + geometry
-サイズ: 96,553,319 bytes (96.6 MB)
+サイズ: 111,642,681 bytes (111.6 MB)
 並び  : 資料年次 昇順
-ETag  : "0f60d955391376abef42f7e6668bd757-12"
+ETag  : "084c1e0554369f08665e65918eb7e95d-14"
 ```
 
 Content-Type は `application/vnd.apache.parquet`、
 Cache-Control は `public, max-age=31536000, immutable`。
 
-ファイル名に年次範囲を含めるため、2025年追加時は `honhyo_2019-2025.parquet` という
-別キーになる。immutable キャッシュのまま安全に増やせ、パージが要らない。
+ファイル名に年次範囲を含めるため、年次を足すたびに別キーになる（2025年追加で
+`honhyo_2019-2024.parquet` → `honhyo_2019-2025.parquet`。旧キーは残してある）。
+immutable キャッシュのまま安全に増やせ、パージが要らない。
 
 ### 3.2 前段出力からの加工
 
 | 項目 | 前段出力 | R2配信用 | 理由 |
 |---|---|---|---|
 | `資料年次` 列 | なし | int16 で追加 | 3.3 |
-| 圧縮 | Snappy | zstd-9 | 128.1 → 96.6 MB |
-| row group | 2個（各1,048,576行） | 15個（各131,072行） | 年での読み飛ばしを効かせる |
+| 圧縮 | Snappy | zstd-9 | 150.1 → 111.6 MB |
+| row group | 3個（各1,048,576行） | 17個（各131,072行） | 年での読み飛ばしを効かせる |
 | 列の削除 | — | 行わない | 集計時に読まれないため不要（2.1） |
 | GeoParquet メタデータ | あり | 保持 | geopandas / QGIS から引き続き読める |
 
-`pipeline/build_parquet.py` が担当。1.9M行の再変換は行わず、
-マージ済み parquet に列を足して書き直すだけ（実測11秒）。
+`pipeline/build_parquet.py` が担当。2.2M行の再変換は行わず、
+マージ済み parquet に列を足して書き直すだけ（`--verify` 込みで実測約1分）。
 
 行の対応付けは位置ベース。マージが年次順の concat であり座標欠損による行落ちも
 無いため、単年CSVの行数を積み上げた区間が各年のブロックになる。
-`--verify` で本票番号・都道府県名まで全6年を照合できる（照合済み）。
+`--verify` で本票番号・都道府県名まで全7年を照合できる（照合済み）。
 
 ### 3.3 年次基準を2系統持つ
 
@@ -153,7 +154,7 @@ Cache-Control は `public, max-age=31536000, immutable`。
 
 ### 4.3 コスト
 
-R2 無料枠内。ストレージ 96.6MB（枠10GB）、egress 無料、
+R2 無料枠内。ストレージ 208MB（2019-2024版と2019-2025版の2本。枠10GB）、egress 無料、
 読み取り Class B は1クエリ20〜62リクエスト（枠1,000万回/月）。
 
 ---
@@ -166,7 +167,7 @@ R2 無料枠内。ストレージ 96.6MB（枠10GB）、egress 無料、
 
 ```python
 import duckdb
-URL = 'https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet'
+URL = 'https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet'
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
 con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
@@ -181,6 +182,8 @@ con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 | ビュー作成（フッタ読み込み） | — | 1.33秒 |
 | 生活道路×若年層、全6年 | 0.91秒 / 4.07MB / 62req | 2.05秒 |
 | 同、2024年のみ | 0.05秒 / 0.84MB / 20req | — |
+
+上は2019-2024版での実測。2019-2025版ではビュー作成 0.81秒、全7年の生活道路件数の集計が 3.35秒（R2経由）。
 
 R2 経由でもローカル集計と結果が完全一致することを確認済み。
 差は RTT 分のみで、対話のテンポを損なわない。
@@ -222,7 +225,7 @@ R2 からデータを取得できず、地図タイルも読めない。した�
 | 集計表・経年推移グラフ | 数KB | ○ |
 | 都道府県別コロプレス（境界込み） | 307 KB | ○ |
 | 絞り込んだ点データ（例: 8,300件） | 約150 KB | ○ |
-| 全1,895,275件の点表示 | 数十MB | ×（既存 viewer + PMTiles） |
+| 全2,182,298件の点表示 | 数十MB | ×（既存 viewer + PMTiles） |
 
 都道府県境界は `../archive/npa-accident-hotspot-analyzer/input/prefecture.parquet`
 （47件、EPSG:6668）。離島込みで121,990ポリゴン・21.6MBあるが、

@@ -36,12 +36,12 @@ flowchart LR
             disk[("/data/honhyo.parquet<br/>ローカルディスク")]
             srvR["server.py --http<br/>:8080"]
             duckR[("DuckDB")]
-            entry -- "ダウンロード 96.6MB" --> disk
+            entry -- "ダウンロード 111.6MB" --> disk
             entry -- "exec" --> srvR
             srvR --> duckR
             duckR -- "ローカル読み" --> disk
         end
-        r2[("R2 バケット shi-works<br/>shi-works.com/geoparquet/…/<br/>honhyo_2019-2024.parquet")]
+        r2[("R2 バケット shi-works<br/>shi-works.com/geoparquet/…/<br/>honhyo_2019-2025.parquet")]
         worker -- "Durable Object<br/>インスタンス名 main" --> srvR
     end
 
@@ -134,7 +134,7 @@ flowchart LR
         direction TB
         c1["python -m converter --all --merge<br/>./export_geo.sh"]
         codes["converter/codes<br/>コード表"]
-        c2[("output/<br/>honhyo_2019-2024_converted.parquet")]
+        c2[("output/<br/>honhyo_2019-2025_converted.parquet")]
         pm[("PMTiles<br/>個票の地図ビューア用")]
         c1 --> c2
         c1 --> pm
@@ -143,14 +143,14 @@ flowchart LR
     subgraph this["このリポジトリ"]
         direction TB
         b["pipeline/build_parquet.py<br/>資料年次の付与<br/>Snappy → zstd-9<br/>row group 131,072行 × 15"]
-        out[("output/<br/>honhyo_2019-2024.parquet<br/>96.6MB")]
+        out[("output/<br/>honhyo_2019-2025.parquet<br/>111.6MB")]
         vocab["mcp_server/vocab.py<br/>（機械生成）"]
         b --> out
     end
 
     subgraph r2["Cloudflare R2（バケット shi-works / shi-works.com）"]
         direction TB
-        gp[("geoparquet/npa-traffic-accident-analytics/<br/>honhyo_2019-2024.parquet")]
+        gp[("geoparquet/npa-traffic-accident-analytics/<br/>honhyo_2019-2025.parquet")]
         pmr[("pmtiles/npa-traffic-accident/")]
     end
 
@@ -164,6 +164,6 @@ flowchart LR
 - `資料年次` は前段の出力に無い。単年 CSV の行数を積み上げた区間で付与する（`--verify` で照合）
 - ファイル名に年次範囲が入るので、年次を足すと**新しいキー**になる。
   immutable キャッシュのまま古い版と混ざらない
-- 全 1,895,275 件の点表示は PMTiles + 既存ビューア（前段リポジトリ）の担当で、
+- 全 2,182,298 件の点表示は PMTiles + 既存ビューア（前段リポジトリ）の担当で、
   このリポジトリの `accident_map` とは別物
 - 手順の詳細は [README](../README.md) の「データ更新」

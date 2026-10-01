@@ -40,7 +40,7 @@ import vocab  # noqa: E402
 
 PARQUET_URL = os.environ.get(
     "NPA_PARQUET_URL",
-    "https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet",
+    "https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet",
 )
 
 # 北海道は元データが方面本部別(札幌・旭川・釧路・函館・北見)。
@@ -295,7 +295,7 @@ def _filters(
         where.append(f'"昼夜" IN ({_quote(_codes_to_labels(day_night, vocab.DAY_NIGHT, "day_night"))})')
     if fatal_only:
         where.append("\"事故内容\" = '死亡事故'")
-        notes.append("死亡事故は全期間で16,266件と少ない。細かく絞ると年数件になり傾向を読めない")
+        notes.append("死亡事故は全期間で18,761件と少ない。細かく絞ると年数件になり傾向を読めない")
     if zone30_only:
         where.append("\"ゾーン規制\" = 'ゾーン30'")
 
@@ -433,7 +433,7 @@ def seikatsu_dashboard(
     ctx: Context,
     seikatsu: definitions.SeikatsuName = definitions.DEFAULT_SEIKATSU,
     year_from: int = 2019,
-    year_to: int = 2024,
+    year_to: int = 2025,
     prefecture: list[str] | None = None,
 ) -> CallToolResult:
     c = con()
@@ -622,7 +622,7 @@ def accident_map_tool(
     ctx: Context,
     prefecture: list[str] | None = None,
     year_from: int = 2019,
-    year_to: int = 2024,
+    year_to: int = 2025,
     seikatsu: definitions.SeikatsuName | None = None,
     road_width: list[str] | None = None,
     party_age: list[str] | None = None,
@@ -763,7 +763,7 @@ def _agg_scope(scope_pref: str, year_basis: str, year_from: int | None,
                zone30_only: bool, group_by: list[str]) -> str:
     """ビューの見出しに出す、何をどう絞ったかの一行。"""
     span = ("全期間" if year_from is None and year_to is None
-            else f"{year_from or 2019}〜{year_to or 2024}年")
+            else f"{year_from or 2019}〜{year_to or 2025}年")
     parts = [scope_pref, f"{span}（{year_basis}）"]
     if seikatsu:
         parts.append(f"生活道路 {definitions.seikatsu_label(seikatsu)}")
@@ -953,7 +953,7 @@ def aggregate(
 server = MCPServer(
     name="npa-traffic-accident",
     title="警察庁交通事故統計",
-    instructions=f"""警察庁の交通事故統計(本票、2019〜2024年、1,895,275件)を集計する。
+    instructions=f"""警察庁の交通事故統計(本票、2019〜2025年、2,182,298件)を集計する。
 
 集計の前に必ず知っておくこと:
 
@@ -972,13 +972,13 @@ server = MCPServer(
 4. 年齢と当事者種別は**同一当事者でペア判定**される。
    party_scope='either' は「A または B が条件を満たす事故」を行単位で数えるので、
    二重計上は起きない。ただし歩行者だけの集計と自転車だけの集計を足すと、
-   両方に該当する事故(6年間で384件)を二重に数えることになる。
+   両方に該当する事故(7年間で454件)を二重に数えることになる。
 
 5. 年次は既定が資料年次(計上年)。各年の全事故件数が警察庁公表値と一致する。
    発生年で数えると最新年が約3%過少に出るため、経年推移には向かない。
 
 6. 本票は**人身事故のみ**。物損事故は含まれない。
-   死亡事故は全期間で16,266件しかなく、細かく絞ると年数件になりトレンドを読めない。
+   死亡事故は全期間で18,761件しかなく、細かく絞ると年数件になりトレンドを読めない。
 
 7. 生活道路の概況を聞かれたら seikatsu_dashboard を使う。全事故(母数)を同時に数え、
    対応ホストではグラフ付きのビューが出る。細かい切り口が要るときだけ aggregate に降りる。

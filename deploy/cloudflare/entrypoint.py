@@ -14,7 +14,7 @@ import urllib.request
 
 URL = os.environ.get(
     "NPA_PARQUET_URL",
-    "https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet",
+    "https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet",
 )
 LOCAL = "/data/honhyo.parquet"
 

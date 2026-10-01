@@ -1,6 +1,6 @@
 # npa-traffic-accident-analytics
 
-警察庁交通事故統計オープンデータ（2019〜2024年、1,895,275件）を Cloudflare R2 上の
+警察庁交通事故統計オープンデータ（2019〜2025年、2,182,298件）を Cloudflare R2 上の
 GeoParquet として公開し、Claude との対話で集計・可視化する。
 
 データベースもWebアプリも持たない。**R2 上のファイル1つと `CLAUDE.md`**、
@@ -34,27 +34,27 @@ Cloudflare R2 / shi-works.com
 ## データ
 
 ```
-https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet
+https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet
 ```
 
 | | |
 |---|---|
-| 行数 | 1,895,275（本票、1行＝1事故） |
-| サイズ | 96.6 MB（zstd-9、row group 131,072行 × 15） |
+| 行数 | 2,182,298（本票、1行＝1事故） |
+| サイズ | 111.6 MB（zstd-9、row group 131,072行 × 17） |
 | 形式 | GeoParquet 1.0.0（EPSG:4326） |
 
-96.6 MB のうち、集計で実際に転送されるのは約4MB。Parquet の列指向構造により
+111.6 MB のうち、集計で実際に転送されるのは約5MB。Parquet の列指向構造により
 `SELECT` した列の Range リクエストだけが飛ぶ。年を絞ると 0.84MB まで下がる。
 
 ```python
 import duckdb
-URL = 'https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet'
+URL = 'https://shi-works.com/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet'
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs;")
 con.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{URL}')")
 ```
 
-実測: ビュー作成 1.33秒 / 全6年の集計 2.05秒。
+実測: ビュー作成 0.81秒 / 全7年の集計 3.35秒。
 
 ## ドキュメント
 
@@ -95,8 +95,8 @@ cd ../npa-traffic-accident-analytics
 python pipeline/build_parquet.py --verify
 
 # R2 へ
-aws s3 cp output/honhyo_2019-2024.parquet \
-  s3://shi-works/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2024.parquet \
+aws s3 cp output/honhyo_2019-2025.parquet \
+  s3://shi-works/geoparquet/npa-traffic-accident-analytics/honhyo_2019-2025.parquet \
   --profile r2-shiworks \
   --content-type application/vnd.apache.parquet \
   --cache-control "public, max-age=31536000, immutable"
