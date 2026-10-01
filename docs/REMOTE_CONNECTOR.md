@@ -28,7 +28,7 @@ flowchart TB
 
     subgraph cf["Cloudflare"]
         edge["ホスト名.trycloudflare.com<br/>エッジ"]
-        r2[("R2<br/>honhyo_2019-2024.parquet<br/>96.6 MB")]
+        r2[("R2<br/>honhyo_2019-2025.parquet<br/>111.6 MB")]
     end
 
     desktop -->|"経路A: stdio"| stdio

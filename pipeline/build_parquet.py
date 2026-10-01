@@ -2,7 +2,7 @@
 """マージ済み GeoParquet に資料年次を付与し、R2 配信用に書き直す。
 
     python pipeline/build_parquet.py
-    python pipeline/build_parquet.py --src ../npa-traffic-accident-converter/output/honhyo_2019-2024_converted.parquet
+    python pipeline/build_parquet.py --src ../npa-traffic-accident-converter/output/honhyo_2019-2025_converted.parquet
 
 前段リポジトリの出力には「どの年のファイル由来か」の情報が無い。単年CSVでは
 ファイル名が年次を表しているが、マージすると失われる。この列が無いと公表値と
@@ -33,8 +33,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SRC = ROOT.parent / 'npa-traffic-accident-converter' / 'output' / 'honhyo_2019-2024_converted.parquet'
-DEFAULT_DST = ROOT / 'output' / 'honhyo_2019-2024.parquet'
+DEFAULT_SRC = ROOT.parent / 'npa-traffic-accident-converter' / 'output' / 'honhyo_2019-2025_converted.parquet'
+DEFAULT_DST = ROOT / 'output' / 'honhyo_2019-2025.parquet'
 
 ROW_GROUP = 128 * 1024
 YEAR_FIELD = pa.field('資料年次', pa.int16())
@@ -125,7 +125,7 @@ def main() -> None:
     ap.add_argument('--src', type=Path, default=DEFAULT_SRC)
     ap.add_argument('--dst', type=Path, default=DEFAULT_DST)
     ap.add_argument('--from-year', type=int, default=2019)
-    ap.add_argument('--to-year', type=int, default=2024)
+    ap.add_argument('--to-year', type=int, default=2025)
     ap.add_argument('--verify', action='store_true',
                     help='位置ベースの割り当てを行の中身まで照合する(遅い)')
     args = ap.parse_args()

@@ -64,7 +64,7 @@ SEIKATSU_OFFICIAL = ("警察庁・国交省の資料は生活道路を「車道�
                      "どちらかを「公式の定義に準拠」と説明しないこと")
 
 # 定義の選び方で結果がどれだけ動くか。instructions とツールの説明文に入る
-# (全期間 strict 312,035件 → broad 558,591件)
+# (全期間 strict 355,708件 → broad 639,132件)
 SEIKATSU_IMPACT = "broad は strict の約1.8倍の件数になる"
 
 
