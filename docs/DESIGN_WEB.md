@@ -3,7 +3,7 @@
 いまの MCP サーバーを唯一の窓口にしたまま、Claude 以外の画面からも同じ集計を使えるようにする。
 
 - 作成: 2026-10-03
-- 状態: 設計のみ。実装は未着手
+- 状態: 段階A（9章）を実装済み・本番未デプロイ。実装は [web/](../web/README.md) と `deploy/cloudflare/src/`
 - 前提: [DESIGN.md](DESIGN.md)（全体の方式）、[deploy/cloudflare/](../deploy/cloudflare/README.md)（いまの本番）
 
 **指標・ディメンションの定義は [CLAUDE.md](../CLAUDE.md) と `mcp_server/definitions.py` が正典。**
@@ -264,8 +264,10 @@ D は A〜C と独立なので、いつ行ってもよい。10/22 の発表会�
 
 | # | 項目 | 備考 |
 |---|---|---|
-| 1 | **ブラウザの MCP クライアントで地図ビュー（約1.5 MB）を `resources/read` できるか** | Python の `mcp` クライアントでは `SSE stream ended without a response` で読めない（deploy/cloudflare/README.md の落とし穴）。claude.ai からは読めている。A の段階で最初に確かめる |
-| 2 | `AppBridge` だけでホストとして足りるか | ext-apps 2.0.0 の型定義で、5.2 の表のメソッドがあることは見た。動かしてはいない |
+| 1 | ~~ブラウザの MCP クライアントで地図ビュー（約1.5 MB）を `resources/read` できるか~~ | **読めた**（2026-10-03、ローカル）。Python のクライアントだけの問題だった |
+| 2 | ~~`AppBridge` だけでホストとして足りるか~~ | **足りた。** 3つのビューの描画と、ビュー内の再問い合わせが動いた。ただし initialize で MCP Apps 対応を名乗る必要があった（[web/README.md](../web/README.md)） |
+| 6 | 本番の Worker 経由で `/web/mcp` が動くか | `wrangler dev` は Windows でコンテナを動かせないため、デプロイして確かめる |
+| 7 | `tools/list` に `run_sql` が見えたままでよいか | Worker は呼び出しを止めるが、一覧からは消していない（SSE の応答を書き換える必要がある）。段階B・Cで画面とチャットの側で外す |
 | 3 | ChatGPT・VS Code が MCP Apps のビューを描画するか | 6章 |
 | 4 | 起きている状態の応答が遅くなった原因 | #40 で、9/21 の 2.5〜4 倍になった。配置先（`maa01`）の影響か判別できていない |
 | 5 | Worker の回数制限の実装手段 | Workers の Rate Limiting binding か Durable Object か |

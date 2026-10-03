@@ -4,15 +4,20 @@
 `server.py --http` をそのままコンテナで動かし、Worker は転送だけする。PC に依存しない。
 
 ```
-claude.ai → Worker(src/worker.ts、転送のみ) → Container(server.py --http) → R2 の parquet
+claude.ai        → Worker /s/<SECRET>/mcp ─┐
+Web アプリ(web/) → Worker /web/mcp ────────┴→ Container(server.py --http) → R2 の parquet
 ```
+
+Web アプリの入口は [docs/DESIGN_WEB.md](../../docs/DESIGN_WEB.md)。
 
 | ファイル | 役割 |
 |---|---|
 | `Dockerfile` | `python:3.12-slim` + `mcp_server/`。ビルドコンテキストはリポジトリ直下（`.dockerignore` は許可リスト） |
 | `entrypoint.py` | 起動時に parquet を R2 から `/data` に落としてから `server.py` を exec する（下記「なぜ」） |
 | `wrangler.jsonc` | `instance_type: basic`（1/4 vCPU・1 GiB・4 GB disk）、`max_instances: 1` |
-| `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）だけをコンテナに通す |
+| `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）と `/web/mcp` をコンテナに通す。それ以外は 404 |
+| `src/gate.ts` | `/web/mcp` で通すメソッド・ツールの許可リスト（`run_sql` は通さない）。`npm test` で確かめる |
+| `wrangler.jsonc` の `assets` | Web アプリ（`web/dist`）を静的アセットとして配る |
 | `probe.py` | エンドポイントを叩いて応答時間を出す。デプロイ後の確認にも使う |
 
 ## 実測（2026-09-21）
@@ -127,8 +132,10 @@ Workers Paid は $5/月。そこに **basic インスタンスが起きている
 ## デプロイ手順（済み。作り直すときも同じ）
 
 ```bash
+(cd web && npm install && npm run build)  # Web アプリ。web/dist が無いと deploy が落ちる
 cd deploy/cloudflare
 npm install
+npm test                                    # /web/mcp の許可リスト
 npx wrangler login
 npx wrangler deploy                         # Docker が動いている必要がある。初回は数分待つ
 python -c "import secrets; print(secrets.token_urlsafe(24))" | npx wrangler secret put SECRET_PATH

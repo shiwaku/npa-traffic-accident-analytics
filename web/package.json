@@ -1,0 +1,19 @@
+{
+  "name": "npa-traffic-accident-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "自前の MCP ホスト（docs/DESIGN_WEB.md）。/web/mcp に繋ぎ、ui:// のビューを iframe で描く",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/ext-apps": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0"
+  }
+}

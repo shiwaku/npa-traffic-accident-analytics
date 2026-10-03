@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>交通事故統計 集計</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>交通事故統計 集計</h1>
+      <p id="status">接続中…</p>
+    </header>
+    <!-- 段階A: 引数を固定したツール呼び出し。フォームは段階Bで inputSchema から作る -->
+    <nav id="presets" hidden></nav>
+    <main id="views"></main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
