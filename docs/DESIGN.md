@@ -30,7 +30,7 @@ MCPサーバー経由で、利用者が自分の Claude から日本語で集計
 
 ### 1.3 非目的
 
-- 誰でもブラウザだけで使える一般公開版（10.3 のとおり費用の理由で採らない）
+- 誰でもブラウザだけで使える一般公開版（10.3 のとおり費用の理由で採らない。2026-10-03 に見直し、[DESIGN_WEB.md](DESIGN_WEB.md) で設計中）
 - 個票の地図表示（既存 viewer + PMTiles が担当）
 - 補充票・高速票（本票のみ）
 - 統計的推論・予測（記述統計のみ）
@@ -298,6 +298,8 @@ npa-traffic-accident-analytics/
 
 ### 10.1 ブラウザ内 DuckDB-WASM + フィルタUI
 
+> 2026-10-03: フィルタUIは [DESIGN_WEB.md](DESIGN_WEB.md) で見直した。DuckDB-WASM は引き続き採らず、ブラウザからも MCP サーバーのツールを呼ぶ。
+
 R2 の Parquet をブラウザ内の DuckDB-WASM が読み、フィルタUIで条件を指定する構成。
 技術的には成立する（CORS の `Expose-Headers` も設定済みで、そのまま動く）。
 
@@ -320,6 +322,8 @@ Cloudflare Worker が Claude API を呼び、質問文をフィルタ仕様のJS
 構造化出力にし、コード値からラベルへの変換はアプリ側の辞書で行う必要がある。
 
 ### 10.3 自前のチャットUI + Cloudflare Worker + Claude API
+
+> 2026-10-03: 一般公開（発表会）が要件になったため、[DESIGN_WEB.md](DESIGN_WEB.md) で見直した。
 
 ブラウザにチャットUIとエージェントループを実装し、Worker がAPIキーを保持して
 Claude API を中継する構成。一般公開して誰でもブラウザだけで使える点が利点。
