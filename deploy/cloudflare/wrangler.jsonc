@@ -5,6 +5,10 @@
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
 
+  // Web アプリ（docs/DESIGN_WEB.md）。web/ で npm run build してから deploy する。
+  // ファイルに当たるパスはここから配られ、Worker（src/worker.ts）は呼ばれない
+  "assets": { "directory": "../../web/dist", "not_found_handling": "none" },
+
   // server.py --http をそのままコンテナで動かす。Worker は転送するだけ。
   "containers": [
     {
