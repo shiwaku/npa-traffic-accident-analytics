@@ -36,9 +36,30 @@ claude.ai → Worker(src/worker.ts、転送のみ) → Container(server.py --htt
 判断:
 
 - **`basic` で足りる。** メモリは 1 GiB の 2 割、CPU も 1 秒台。`lite`（256 MiB・1/16 vCPU）は試していない
-- コールドスタートは十数秒。10 分に 1 回以上使うなら起きたまま。Cloudflare の網内なら
-  R2 からの 96 MB は手元の回線より速いはずで、実機で測り直す
+- コールドスタートは十数秒。10 分に 1 回以上使うなら起きたまま。実機では 111.6 MB で 7.5 s
+  （下の「再計測」）
 - 実測はすべて Docker Desktop（Windows）上。Cloudflare の実機はデプロイして測る
+
+## 再計測（2026-10-03、2025年版 111.6 MB）
+
+`honhyo_2019-2025.parquet`（2,182,298件・111.6 MB）に切り替えた後、実機で `probe.py` を打った。
+配置先は `wrangler containers instances` の `LOCATION` で `maa01`。
+
+| | 2019〜2024年版（96.6 MB、09-21） | **2019〜2025年版（111.6 MB）** |
+|---|---:|---:|
+| コールドスタート（`inactive` から initialize が通るまで） | — | **7.5 s** |
+| `seikatsu_dashboard`（全年・全国） | 0.38 s | 1.01〜1.55 s |
+| `aggregate`（年別） | 0.23 s | 0.29〜0.49 s |
+| `accident_map`（東京都・20,000点） | 0.88 s | 2.68〜3.88 s |
+
+- コールドスタートはダウンロード込みで 7.5 s。手元 Docker の 11.8 s（96.6 MB）より速く、
+  網内の R2 は手元の回線より速いという見込みは当たった。ダウンロード単体の秒数は取っていない
+- 起動中の応答は 09-21 の 2.5〜4 倍。データ増は約15%なのでそれだけでは説明しにくい。
+  `accident_map` は約 1 MB を返すので、配置先（`maa01`）と手元の距離が効いている可能性がある。
+  09-21 の配置先は記録していないため判別できない。次から `LOCATION` も控える
+- 10-03 は claude.ai のタブを閉じても 30 分以上 `running` のままだった（下の「課金とスリープ」と食い違う）。
+  ほかのクライアントが繋がっていたのか、挙動が変わったのかは未確認。`wrangler deploy` し直すと
+  ロールアウトでインスタンスが `inactive` になるので、コールドスタートはそれで測った
 
 ## 課金とスリープ（実測 2026-09-21）
 
@@ -78,8 +99,14 @@ Workers Paid は $5/月。そこに **basic インスタンスが起きている
 
 **`wrangler containers list` の `LIVE INSTANCES` は稼働判定に使えない。**
 寝ていても `1` のまま。`wrangler containers instances <ID>` の `STATE` を見ること。
+ただし 2026-10-03 の再デプロイ後（version 6）は、応答している（initialize 0.4 s）のに
+`STATE` が `stopped` と出た。`STATE` も当てにならない場合があるので、迷ったら `probe.py cold` の秒数で判断する
+（起きていれば 1 s 未満、コールドなら数秒）。
 
 ## 分かっている落とし穴
+
+- **`wrangler deploy` は Docker Desktop が起動していないと落ちる**（`The Docker CLI is needed to build
+  the configured image before deploying`）。コードが同じでもイメージをビルドし直し、digest も変わる
 
 - **`wrangler dev` はコンテナを Windows で動かせない。** `Local development with containers is currently
   not supported on Windows. You should use WSL instead.` と言われて落ちる。Worker→コンテナの経路は
