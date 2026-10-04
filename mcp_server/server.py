@@ -501,7 +501,7 @@ def seikatsu_dashboard(
     totals["ゾーン30構成比"] = round(totals["ゾーン30"] / n, 5)
 
     notes.append(definitions.seikatsu_note(seikatsu))
-    notes.append("資料年次(計上年)で集計した。各年の全事故件数は警察庁公表値と一致する")
+    notes.append(f"年は{definitions.YEAR_BASIS_LABEL['資料年次']}で数えた。各年の全事故件数は警察庁の公表値と一致する")
     notes.append("実数だけで語らないこと。全事故の指数(破線)と比べて初めて意味を持つ。"
                  "2020年はコロナ禍で全体が前年比19%減している")
     notes.append("0〜24歳は年齢層コードの最小区分。10代のみ・20代のみの切り出しはできない")
@@ -518,7 +518,7 @@ def seikatsu_dashboard(
                      "描画されない。上の years / totals をそのまま表にして示すこと")
 
     payload = {
-        "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
+        "scope": f"{year_from}〜{year_to}年（{definitions.YEAR_BASIS_LABEL['資料年次']}）・{scope_pref}",
         "definition": {
             "seikatsu": seikatsu,
             "label": definitions.seikatsu_label(seikatsu),
@@ -705,7 +705,7 @@ def accident_map_tool(
                1 if r["ゾーン規制"] == "ゾーン30" else 0, idx("都道府県", r["都道府県"])]
               for r in rows]
 
-    notes.append("資料年次(計上年)で絞った。地図上の点は事故1件の発生地点")
+    notes.append(f"年は{definitions.YEAR_BASIS_LABEL['資料年次']}で絞った。地図上の点は事故1件の発生地点")
     if sampled:
         notes.append(f"該当 {matched:,}件は多いため {max_points:,}件を抽出して描いた"
                      "(内容のハッシュ順。同じ条件なら同じ点が出る)。密度の見え方は保たれるが、"
@@ -718,7 +718,7 @@ def accident_map_tool(
                      "地点を見せる必要があるなら、対応ホスト(Claude Desktop 等)で開くこと")
 
     payload = {
-        "scope": f"{year_from}〜{year_to}年・{scope_pref}・資料年次(計上年)ベース",
+        "scope": f"{year_from}〜{year_to}年（{definitions.YEAR_BASIS_LABEL['資料年次']}）・{scope_pref}",
         "args": {"prefecture": prefecture, "year_from": year_from, "year_to": year_to,
                  "seikatsu": seikatsu, "road_width": road_width,
                  "party_age": party_age, "party_type": party_type, "party_scope": party_scope,
@@ -765,7 +765,7 @@ def _agg_scope(scope_pref: str, year_basis: str, year_from: int | None,
     """ビューの見出しに出す、何をどう絞ったかの一行。"""
     span = ("全期間" if year_from is None and year_to is None
             else f"{year_from or 2019}〜{year_to or 2025}年")
-    parts = [scope_pref, f"{span}（{year_basis}）"]
+    parts = [scope_pref, f"{span}（{definitions.YEAR_BASIS_LABEL[year_basis]}）"]
     if seikatsu:
         parts.append(f"生活道路（{definitions.seikatsu_label(seikatsu)}）")
     if fatal_only:
@@ -903,7 +903,8 @@ def aggregate(
         fatal_only=fatal_only, zone30_only=zone30_only)
     notes += filter_notes
     if year_basis == "発生年":
-        notes.append("発生年で集計した。最新年は翌年ファイルに計上される分が欠けるため約3%過少に出る")
+        notes.append(f"年は{definitions.YEAR_BASIS_LABEL['発生年']}で数えた。"
+                     f"{definitions.YEAR_BASIS_DIFF}ため、最新年はその分が欠けて約3%少なく出る")
 
     where_sql = "WHERE " + "\n  AND ".join(where) + "\n" if where else ""
     keys = ", ".join(str(i + 1) for i in range(len(groups)))
@@ -977,8 +978,10 @@ server = MCPServer(
    二重計上は起きない。ただし歩行者だけの集計と自転車だけの集計を足すと、
    両方に該当する事故(7年間で454件)を二重に数えることになる。
 
-5. 年次は既定が資料年次(計上年)。各年の全事故件数が警察庁公表値と一致する。
-   発生年で数えると最新年が約3%過少に出るため、経年推移には向かない。
+5. 年次は既定が資料年次(統計に計上された年)。各年の全事故件数が警察庁公表値と一致する。
+   発生年(事故が起きた年)で数えると、{definitions.YEAR_BASIS_DIFF}ため
+   最新年が約3%過少に出て、経年推移には向かない。
+   {definitions.YEAR_BASIS_WORDING}。
 
 6. 本票は**人身事故のみ**。物損事故は含まれない。
    死亡事故は全期間で18,761件しかなく、細かく絞ると年数件になりトレンドを読めない。
