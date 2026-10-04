@@ -6,8 +6,12 @@
   "observability": { "enabled": true },
 
   // Web アプリ（docs/DESIGN_WEB.md）。web/ で npm run build してから deploy する。
-  // ファイルに当たるパスはここから配られ、Worker（src/worker.ts）は呼ばれない
-  "assets": { "directory": "../../web/dist", "not_found_handling": "none" },
+  // 開け閉めを Worker で決めるため、ファイルに当たるパスも先に Worker（src/route.ts）を通す
+  "assets": { "directory": "../../web/dist", "binding": "ASSETS",
+              "not_found_handling": "none", "run_worker_first": true },
+
+  // "true" にすると Web アプリ（/web/mcp と画面）を開く。回数制限（DESIGN_WEB.md 7.1）が入るまでは閉じる
+  "vars": { "WEB_ENABLED": "false" },
 
   // server.py --http をそのままコンテナで動かす。Worker は転送するだけ。
   "containers": [
