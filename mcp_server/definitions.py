@@ -23,30 +23,28 @@ import vocab
 @dataclass(frozen=True)
 class Seikatsu:
     road_width: tuple[str, ...]  # vocab.ROAD_WIDTH のコード
-    ja: str                      # 日本語の呼び名。label は「strict（厳密）」のように組み立てる
+    label: str                   # 使う人に見せる名前。含める道路をそのまま書く。キー(strict など)は見せない
     includes: str                # 何を含めるか。初めて見る人が読んで分かる言葉で書く
     impact: str                  # もう一方と比べてどう違うか
-
-    def label(self, name: str) -> str:
-        return f"{name}（{self.ja}）"
 
 
 # 定義を1つだけ見せられても、なぜ2通りあるのかが分からない。注記には毎回これを先に出す
 SEIKATSU_INTRO = ("生活道路は車道幅員5.5m未満の道路。交差点は2本の道路が交わるため、"
-                  "片方だけが細い交差点を含めるかどうかで数え方が2通りある")
+                  "片方だけが5.5m未満の交差点を含めるかどうかで数え方が2通りある")
 
 SEIKATSU: dict[str, Seikatsu] = {
     "strict": Seikatsu(
         road_width=("01", "02", "11"),
-        ja="狭義",
-        includes="5.5m未満の単路と、交わる2本とも5.5m未満の交差点だけを数える",
-        impact="broad にすると件数は約1.8倍になる",
+        label="5.5m未満の道と、5.5m未満どうしの交差点",
+        includes="5.5m未満の単路と、交わる2本とも5.5m未満の交差点を数える",
+        impact="片方だけ5.5m未満の交差点も数えると、件数は約1.8倍になる",
     ),
     "broad": Seikatsu(
         road_width=("01", "02", "11", "14", "17"),
-        ja="広義",
-        includes="strict に加えて、片方だけ5.5m未満の交差点（細い道と5.5m以上の道の交差点）も数える",
-        impact="生活道路から幹線に出たところの出会い頭事故などが加わり、strict の約1.8倍になる",
+        label="5.5m未満の道と、5.5m未満の道が1本以上交わる交差点",
+        includes="5.5m未満の単路と、交わる2本のうち1本以上が5.5m未満の交差点を数える",
+        impact="片方だけ5.5m未満の交差点（5.5m未満の道から5.5m以上の道に出る交差点）の事故が加わり、"
+               "件数はもう一方の約1.8倍になる",
     ),
 }
 
@@ -67,9 +65,14 @@ SEIKATSU_OFFICIAL = ("警察庁・国交省の資料は生活道路を「車道�
 # (全期間 strict 355,708件 → broad 639,132件)
 SEIKATSU_IMPACT = "broad は strict の約1.8倍の件数になる"
 
+# strict / broad は引数の値。会話でそのまま書くと、初めて使う人には意味が分からない
+SEIKATSU_WORDING = ("利用者への説明では strict / broad という語を使わず、"
+                    "「" + "」「".join(d.label for d in SEIKATSU.values()) + "」のように"
+                    "含める道路をそのまま書くこと")
+
 
 def seikatsu_label(name: str) -> str:
-    return SEIKATSU[name].label(name)
+    return SEIKATSU[name].label
 
 
 def seikatsu_note(name: str) -> str:
@@ -78,19 +81,20 @@ def seikatsu_note(name: str) -> str:
     使った定義だけでなく全部の定義を並べる。片方しか書かないと、
     もう一方が何を指すのか、なぜ選べるのかが初めての人に伝わらない。
     """
-    all_defs = "／".join(f"{d.label(k)}: {d.includes}" for k, d in SEIKATSU.items())
+    all_defs = "／".join(f"「{d.label}」" for d in SEIKATSU.values())
     return (f"{SEIKATSU_INTRO}（{all_defs}）。"
-            f"この集計は {seikatsu_label(name)} で数えた。{SEIKATSU[name].impact}")
+            f"この集計は「{seikatsu_label(name)}」で数えた。{SEIKATSU[name].impact}")
 
 
 def seikatsu_choices() -> list[dict[str, str]]:
     """ビューの切り替えボタン。ボタンを HTML に書くと、定義を足したときに直し忘れる。"""
-    return [{"value": k, "label": d.label(k), "title": d.includes} for k, d in SEIKATSU.items()]
+    return [{"value": k, "label": d.label, "title": d.includes} for k, d in SEIKATSU.items()]
 
 
 def seikatsu_summary() -> str:
-    """instructions と説明文に入れる一覧。例: strict（厳密）: …／broad（広義）: …"""
-    return "／".join(f"{d.label(k)}: {d.includes}" for k, d in SEIKATSU.items())
+    """instructions と説明文に入れる一覧。Claude 向けなので引数の値も書く。
+    例: strict（5.5m未満の道と、…）: …／broad（…）: …"""
+    return "／".join(f"{k}（{d.label}）: {d.includes}" for k, d in SEIKATSU.items())
 
 
 def seikatsu_codes_summary() -> str:
@@ -123,7 +127,7 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
     for name, d in SEIKATSU.items():
-        print(f"{name}: {d.label(name)}　{d.includes}")
+        print(f"{name}: {d.label}　{d.includes}")
         for c in d.road_width:
             print(f"  {c} {' / '.join(vocab.ROAD_WIDTH[c])}")
     print("若年の歩行者・自転車:")
