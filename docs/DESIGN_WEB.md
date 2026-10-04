@@ -3,7 +3,7 @@
 いまの MCP サーバーを唯一の窓口にしたまま、Claude 以外の画面からも同じ集計を使えるようにする。
 
 - 作成: 2026-10-03
-- 状態: 段階A（9章）を実装済み・本番未デプロイ。実装は [web/](../web/README.md) と `deploy/cloudflare/src/`
+- 状態: 段階A（9章）を実装済み。本番には配備するが、回数制限（7.1）が入るまで `WEB_ENABLED=false` で閉じている（11章 #1）。実装は [web/](../web/README.md) と `deploy/cloudflare/src/`
 - 前提: [DESIGN.md](DESIGN.md)（全体の方式）、[deploy/cloudflare/](../deploy/cloudflare/README.md)（いまの本番）
 
 **指標・ディメンションの定義は [CLAUDE.md](../CLAUDE.md) と `mcp_server/definitions.py` が正典。**

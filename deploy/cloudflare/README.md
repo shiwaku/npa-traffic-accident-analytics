@@ -16,8 +16,9 @@ Web アプリの入口は [docs/DESIGN_WEB.md](../../docs/DESIGN_WEB.md)。
 | `entrypoint.py` | 起動時に parquet を R2 から `/data` に落としてから `server.py` を exec する（下記「なぜ」） |
 | `wrangler.jsonc` | `instance_type: basic`（1/4 vCPU・1 GiB・4 GB disk）、`max_instances: 1` |
 | `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）と `/web/mcp` をコンテナに通す。それ以外は 404 |
+| `src/route.ts` | パスごとの振り分け。`WEB_ENABLED` が `"true"` でなければ `/web/mcp` と Web アプリの画面も 404。`npm test` で確かめる |
 | `src/gate.ts` | `/web/mcp` で通すメソッド・ツールの許可リスト（`run_sql` は通さない）。`npm test` で確かめる |
-| `wrangler.jsonc` の `assets` | Web アプリ（`web/dist`）を静的アセットとして配る |
+| `wrangler.jsonc` の `assets` / `vars` | Web アプリ（`web/dist`）を配る。`WEB_ENABLED` は回数制限（DESIGN_WEB.md 7.1）が入るまで `"false"` |
 | `probe.py` | エンドポイントを叩いて応答時間を出す。デプロイ後の確認にも使う |
 
 ## 実測（2026-09-21）
