@@ -145,10 +145,10 @@ data: {"jsonrpc":"2.0","id":0,"result":{...,"serverInfo":{"name":"npa-traffic-ac
 `docs/VERIFY_PROMPTS.md` の 1〜8 を上から貼る。最初の2つだけ再掲する。
 
 ```
-生活道路の事故件数を年別に出して。厳密定義で。
+生活道路の事故件数を年別に出して。5.5m未満の道と、5.5m未満どうしの交差点で数えて。
 ```
 
-→ `seikatsu_dashboard`（strict）。2019年 65,188 件 … 2024年 45,296 件。
+→ `seikatsu_dashboard`（`seikatsu='strict'`）。2019年 65,188 件 … 2024年 45,296 件。
 グラフ付きのビューが出れば描画 OK。
 
 ```

@@ -2,7 +2,7 @@ import { connect, runTool, type Session } from "./host";
 
 // 段階Aの確認用。引数は固定（DESIGN_WEB.md 9章）
 const PRESETS: { label: string; tool: string; args: Record<string, unknown> }[] = [
-  { label: "生活道路ダッシュボード（全国・strict）", tool: "seikatsu_dashboard", args: {} },
+  { label: "生活道路ダッシュボード（全国）", tool: "seikatsu_dashboard", args: {} },
   { label: "年別の集計表", tool: "aggregate", args: { group_by: ["year"] } },
   { label: "事故地点マップ（東京都・生活道路）", tool: "accident_map", args: { prefecture: ["東京都"], seikatsu: "strict" } },
 ];

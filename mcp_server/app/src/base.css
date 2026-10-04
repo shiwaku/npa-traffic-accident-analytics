@@ -45,7 +45,8 @@ h1 { font-size: 15px; font-weight: var(--font-weight-semibold); margin: 0; lette
 h2 { font-size: 11px; font-weight: var(--font-weight-medium); color: var(--color-text-tertiary); margin: 0 0 6px; }
 .scope { margin: 2px 0 0; font-size: 11.5px; color: var(--color-text-tertiary); }
 
-.switch { display: inline-flex; padding: 2px; gap: 2px;
+/* 生活道路の表示名は含める道路をそのまま書いていて長い。狭い画面では折り返す */
+.switch { display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 2px; gap: 2px;
   background: var(--color-background-tertiary); border-radius: var(--border-radius-md); }
 .switch button {
   font: var(--font-weight-medium) 12px/1.5 var(--font-sans);
