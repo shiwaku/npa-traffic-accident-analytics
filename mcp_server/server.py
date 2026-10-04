@@ -879,7 +879,8 @@ def aggregate(
 ) -> dict[str, Any]:
     c = con()
     group_by = group_by or ["year"]
-    year_col = '"資料年次"' if year_basis == "資料年次" else '"発生日時_年"'
+    # 発生日時_年 は文字列の列。数値にしないと year_from / year_to との比較で落ちる
+    year_col = '"資料年次"' if year_basis == "資料年次" else 'CAST("発生日時_年" AS INTEGER)'
     notes: list[str] = []
 
     selects, groups = [], []
