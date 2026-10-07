@@ -122,6 +122,15 @@ parquet だけに絞り（`allowed_paths`）、`lock_configuration` で SQL か�
 Claude には「Error executing tool ...」しか届かない。緯度経度の取り違えのような案内が
 伝わらなくなる。
 
+**未知の引数はエラーにする。** SDK の既定では、ツールに無い引数は黙って捨てられる。
+`aggregate` に存在しない絞り込み（`signal=...` など）を渡されると、絞り込まれていない数字が
+もっともらしく返る（オープンモデルの試験で実際に起きた。docs/OPEN_MODELS.md）。
+`server.py` の末尾で全ツールの引数モデルを `extra="forbid"` にしている。
+
+**`honhyo` ビューに `geometry` は入れない。** どのツールも使わず（地図は緯度経度の列から描く）、
+バイナリなので `run_sql` の `SELECT *` が JSON に変換できずに落ちていた。
+`run_sql` の説明には全73列の名前を載せ、列名の推測で外さないようにしている。
+
 **返り値に実行したSQLを含める。** 数字の出どころを確認できるようにするため。
 
 `vocab.py` は `converter/codes` から機械生成したもの。手で編集しないこと。

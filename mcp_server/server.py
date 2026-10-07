@@ -67,6 +67,30 @@ GROUP_COLUMNS = {
     "party_type_b": '"当事者種別（当事者B）"',
 }
 
+# run_sql の説明に載せる列の一覧。列名の推測で外さないよう、全列を値の例とともに渡す。
+# 曜日・祝日の括弧は半角、日の出入り時刻の空白は全角2つ。どちらも元データのまま
+RUN_SQL_COLUMNS = """資料年次（統計に計上された年。年次の既定軸） / 資料区分 / 都道府県名（51種。北海道は方面本部別に5つ、東京・大阪に都府が付かない） / 警察署等名 / 本票番号
+事故内容（負傷事故・死亡事故） / 死者数 / 負傷者数
+路線名 / 上下線 / 地点コード / 市区町村コード
+発生日時_年 / 発生日時_月 / 発生日時_日 / 発生日時_時 / 発生日時_分（事故が起きた日時）
+曜日(発生年月日)（月〜日の1文字） / 祝日(発生年月日)（当日・前日・その他）
+昼夜 / 天候 / 地形 / 路面状態（舗装－乾燥 など） / 道路形状 / 環状交差点の直径
+信号機（施設なし・点灯－３灯式・点灯－押ボタン式 など）
+一時停止規制_標識（当事者A） / 一時停止規制_表示（当事者A） / 一時停止規制_標識（当事者B） / 一時停止規制_表示（当事者B）
+車道幅員 / 道路線形 / 衝突地点 / ゾーン規制 / 中央分離帯施設等 / 歩車道区分 / 事故類型
+年齢（当事者A） / 年齢（当事者B）（年齢層。最小区分は 0～24歳）
+当事者種別（当事者A） / 当事者種別（当事者B） / 用途別（当事者A） / 用途別（当事者B）
+車両形状（当事者A） / 車両形状（当事者B） / 速度規制（指定のみ）（当事者A） / 速度規制（指定のみ）（当事者B）
+車両の衝突部位（当事者A） / 車両の衝突部位（当事者B） / 車両の損壊程度（当事者A） / 車両の損壊程度（当事者B）
+エアバッグの装備（当事者A） / エアバッグの装備（当事者B） / サイドエアバッグの装備（当事者A） / サイドエアバッグの装備（当事者B）
+人身損傷程度（当事者A） / 人身損傷程度（当事者B）（死亡・負傷・損傷なし・対象外当事者）
+地点_緯度（北緯） / 地点_経度（東経）（度分秒） / 地点_緯度（北緯）_10進数 / 地点_経度（東経）_10進数
+日の出時刻　　時 / 日の出時刻　　分 / 日の入り時刻　　時 / 日の入り時刻　　分
+オートマチック車（当事者A） / オートマチック車（当事者B） / サポカー（当事者A） / サポカー（当事者B）
+認知機能検査経過日数（当事者A） / 認知機能検査経過日数（当事者B） / 運転練習の方法（当事者A） / 運転練習の方法（当事者B）
+（日の出入り時刻からこの行までの12列は2019〜2021年が空値）
+法令違反・事故要因の列は無い。値の一覧は list_values か SELECT DISTINCT で確かめること"""
+
 # run_sql の実行時間の上限。1/4 vCPU のコンテナを全員で共有するので、1つの重いクエリで止めない
 RUN_SQL_TIMEOUT_S = 20.0
 
@@ -95,7 +119,9 @@ def _open_db() -> duckdb.DuckDBPyConnection:
                            "pip install -U -r mcp_server/requirements.txt") from None
     c.execute("SET enable_external_access = false")
     c.execute("SET lock_configuration = true")
-    c.execute(f"CREATE VIEW honhyo AS SELECT * FROM read_parquet('{PARQUET_URL}')")
+    # geometry は使わない（地図は緯度経度の列から描く）。バイナリなので run_sql の SELECT * が
+    # JSON に変換できずに落ちる。ビューから外しておけば、どのツールからも見えない
+    c.execute(f"CREATE VIEW honhyo AS SELECT * EXCLUDE (geometry) FROM read_parquet('{PARQUET_URL}')")
     return c
 
 
@@ -1054,7 +1080,14 @@ def list_values(field: str) -> dict[str, Any]:
 文字列リテラルに似た別文字(ASCIIハイフン等)が混ざっている場合は自動で正しい
 ラベルに直し、direct した内容を corrections に返す。
 
-まず aggregate を試すこと。こちらは列名やラベルを直接扱うぶん誤りが入りやすい。""",
+まず aggregate を試すこと。こちらは列名やラベルを直接扱うぶん誤りが入りやすい。
+
+列は資料年次（SMALLINT）以外すべて VARCHAR。数として比べる・足すときは CAST する
+（例: CAST("発生日時_時" AS INTEGER) BETWEEN 7 AND 9、sum(CAST("死者数" AS INTEGER))）。
+時・月は '08' のようにゼロ埋めの文字列。
+
+列の一覧（この73列のみ。ここに無い列は存在しない）:
+""" + RUN_SQL_COLUMNS,
 )
 def run_sql(query: str) -> dict[str, Any]:
     c = con()
@@ -1093,6 +1126,11 @@ def run_sql(query: str) -> dict[str, Any]:
         cur = c.execute(q)
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        # バイナリは JSON にできず、SDK が中身を隠した定型エラーになる。値を落として理由を返す
+        binary = sorted({k for r in rows for k, v in r.items() if isinstance(v, (bytes, bytearray))})
+        for r in rows:
+            for k in binary:
+                r[k] = None
     except duckdb.PermissionException:
         raise ToolError("読めるのは honhyo(事故データ)だけ。ファイルや URL を読む関数は使えない") from None
     except duckdb.InterruptException:
@@ -1108,10 +1146,21 @@ def run_sql(query: str) -> dict[str, Any]:
         out["corrections"] = corrections
         out["note"] = ("文字列リテラルに似た別文字が含まれていたため自動で修正した。"
                        "コード表のラベルは全角ハイフンマイナス(U+FF0D)と全角チルダ(U+FF5E)を使う")
+    if binary:
+        out["binary_columns_dropped"] = binary
     if not rows:
         out["note"] = ("0件。条件が厳しすぎるか、文字列リテラルの表記が"
                        "コード表と一致していない可能性がある。list_values で確認すること")
     return out
+
+
+# SDK の既定では、ツールに無い引数は黙って捨てられる。aggregate に存在しない絞り込み
+# （例: signal=...）を渡すと、絞り込まれていない数字がもっともらしく返ってしまう。
+# 未知の引数はエラーにして、AI に引数の誤りを気づかせる
+for _tool in server._tool_manager.list_tools():
+    _tool.fn_metadata.arg_model.model_config["extra"] = "forbid"
+    _tool.fn_metadata.arg_model.model_rebuild(force=True)
+    _tool.parameters["additionalProperties"] = False
 
 
 def main() -> None:
