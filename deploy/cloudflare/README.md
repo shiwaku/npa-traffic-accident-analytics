@@ -15,8 +15,8 @@ Web アプリの入口は [docs/DESIGN_WEB.md](../../docs/DESIGN_WEB.md)。
 | `Dockerfile` | `python:3.12-slim` + `mcp_server/`。ビルドコンテキストはリポジトリ直下（`.dockerignore` は許可リスト） |
 | `entrypoint.py` | 起動時に parquet を R2 から `/data` に落としてから `server.py` を exec する（下記「なぜ」） |
 | `wrangler.jsonc` | `instance_type: basic`（1/4 vCPU・1 GiB・4 GB disk）、`max_instances: 1` |
-| `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）と `/web/mcp` をコンテナに通す。それ以外は 404 |
-| `src/route.ts` | パスごとの振り分け。`WEB_ENABLED` が `"true"` でなければ `/web/mcp` と Web アプリの画面も 404。`npm test` で確かめる |
+| `src/worker.ts` | `/mcp`（`SECRET_PATH` があれば `/s/<SECRET_PATH>/mcp`）、発表会用の `/e/<EVENT_PATH>/mcp`、`/web/mcp` をコンテナに通す。それ以外は 404 |
+| `src/route.ts` | パスごとの振り分け。`WEB_ENABLED` が `"true"` でなければ `/web/mcp` と Web アプリの画面も 404。`EVENT_UNTIL` を過ぎたら `/e/…` も 404。`npm test` で確かめる |
 | `src/gate.ts` | `/web/mcp` で通すメソッド・ツールの許可リスト（`run_sql` は通さない）。`npm test` で確かめる |
 | `wrangler.jsonc` の `assets` / `vars` | Web アプリ（`web/dist`）を配る。`WEB_ENABLED` は回数制限（DESIGN_WEB.md 7.1）が入るまで `"false"` |
 | `probe.py` | エンドポイントを叩いて応答時間を出す。デプロイ後の確認にも使う |
@@ -151,6 +151,32 @@ python probe.py run  https://<worker>.workers.dev/s/<SECRET_PATH>/mcp
 現在のデプロイ: `https://npa-traffic-accident-mcp.shi-works-worker.workers.dev`（Worker 名
 `npa-traffic-accident-mcp`、アカウント `993e6751…`）。秘密パス付きの URL は
 claude.ai の Settings → Connectors → Add custom connector に登録済み（OAuth 欄は空）。
+
+## 発表会用の URL（issue #31）
+
+来場者に配る URL は `SECRET_PATH` とは別の `EVENT_PATH` で発行する。配った URL は回収できないので、
+止めても自分の claude.ai の登録（`/s/<SECRET_PATH>/mcp`）は生きるように分けてある。
+
+止め方は2つあり、どちらか一方で閉じる。
+
+- **期限**: `wrangler.jsonc` の `vars.EVENT_UNTIL`（いまは `2026-10-22T23:59:59+09:00`）を過ぎると `/e/…` は 404。
+  消し忘れの保険。未設定・日時として読めない値なら最初から閉じている
+- **削除**: `npx wrangler secret delete EVENT_PATH` で即座に閉じる
+
+```bash
+cd deploy/cloudflare
+npx wrangler deploy        # EVENT_UNTIL を変えたときだけ要る
+python -c "import secrets; print(secrets.token_urlsafe(16))" | npx wrangler secret put EVENT_PATH
+python probe.py run https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/<EVENT_PATH>/mcp
+# 配る URL: https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/<EVENT_PATH>/mcp
+
+# 終わったら
+npx wrangler secret delete EVENT_PATH
+```
+
+`secret put` / `delete` は即座に反映され、再デプロイは要らない。期限を延ばすときは `EVENT_UNTIL` を直して `deploy`。
+来場者の URL では `run_sql` も使える（`/s/…` と同じ入口なので）。重い SQL を投げられても
+コンテナが1台詰まるだけで、課金は `sleepAfter` までの稼働時間しか増えない。
 
 社内共有まで見込むなら、秘密パスの代わりに
 [Cloudflare Access の MCP server portal](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/)

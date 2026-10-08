@@ -1,6 +1,7 @@
 // 入口は3つあり、どれも同じコンテナ（server.py --http）に届く（docs/DESIGN_WEB.md 3章）。
 //
 //   /s/<SECRET_PATH>/mcp  外部の MCP ホスト（claude.ai など）。秘密パスで守る
+//   /e/<EVENT_PATH>/mcp   同上の発表会用。来場者に配り、EVENT_UNTIL を過ぎたら閉じる
 //   /web/mcp              Web アプリの MCP クライアント。gate.ts で通すものを絞る
 //   /・/assets/*          Web アプリ本体（web/dist）。静的アセットとして配る
 //
@@ -10,7 +11,7 @@
 // インスタンス名を固定して常に同じコンテナに送る。
 import { Container, getContainer } from "@cloudflare/containers";
 import { MAX_BODY_BYTES, checkBody, sameOrigin } from "./gate";
-import { route } from "./route";
+import { eventOpen, route } from "./route";
 
 export class McpContainer extends Container {
   defaultPort = 8080;
@@ -23,6 +24,10 @@ interface Env {
   // 設定すると外部ホスト用の入口を /s/<SECRET_PATH>/mcp にする(自分だけで使う場合の簡易認証)。
   // wrangler secret put SECRET_PATH で入れる。未設定なら /mcp をそのまま通す。
   SECRET_PATH?: string;
+  // 発表会で配る入口 /e/<EVENT_PATH>/mcp（issue #31）。wrangler secret put EVENT_PATH で入れ、
+  // 終わったら secret delete で消す。消し忘れても EVENT_UNTIL（wrangler.jsonc の vars）を過ぎれば閉じる
+  EVENT_PATH?: string;
+  EVENT_UNTIL?: string;
   // "true" のときだけ Web アプリ（/web/mcp と画面）を開く。wrangler.jsonc の vars で切り替える
   WEB_ENABLED?: string;
   ASSETS: Fetcher;
@@ -65,7 +70,8 @@ async function web(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
-    switch (route(pathname, env.SECRET_PATH, env.WEB_ENABLED === "true")) {
+    const eventPath = eventOpen(env.EVENT_UNTIL, new Date()) ? env.EVENT_PATH : undefined;
+    switch (route(pathname, env.SECRET_PATH, env.WEB_ENABLED === "true", eventPath)) {
       case "mcp": return toContainer(request, env);
       case "web": return web(request, env);
       case "assets": return env.ASSETS.fetch(request);
