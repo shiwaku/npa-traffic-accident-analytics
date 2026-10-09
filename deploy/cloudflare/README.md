@@ -157,6 +157,14 @@ claude.ai の Settings → Connectors → Add custom connector に登録済み�
 来場者に配る URL は `SECRET_PATH` とは別の `EVENT_PATH` で発行する。配った URL は回収できないので、
 止めても自分の claude.ai の登録（`/s/<SECRET_PATH>/mcp`）は生きるように分けてある。
 
+いま配っている URL（2026-10-08 発行、10/22 23:59 JST に自動停止）:
+
+```
+https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/HEh8-uaLCZxneNDUsleTKA/mcp
+```
+
+`EVENT_PATH` を作り直したら、ここも書き換える。
+
 止め方は2つあり、どちらか一方で閉じる。
 
 - **期限**: `wrangler.jsonc` の `vars.EVENT_UNTIL`（いまは `2026-10-22T23:59:59+09:00`）を過ぎると `/e/…` は 404。
