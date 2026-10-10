@@ -163,7 +163,7 @@ claude.ai の Settings → Connectors → Add custom connector に登録済み�
 https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/HEh8-uaLCZxneNDUsleTKA/mcp
 ```
 
-`EVENT_PATH` を作り直したら、ここも書き換える。
+`EVENT_PATH` を作り直したら、ここと来場者向けの案内（[docs/EVENT_GUIDE.md](../../docs/EVENT_GUIDE.md)）を書き換える。
 
 止め方は2つあり、どちらか一方で閉じる。
 

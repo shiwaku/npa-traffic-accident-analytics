@@ -177,3 +177,4 @@ CLAUDE.md の表からコピーするしかない。
 | 2026-09-15 | claude.ai（quick tunnel） | ○ | ○ | ○ | — | — |
 | 2026-09-16 | claude.ai（quick tunnel） | ○ | ○ | ○ | ○（5 は会話の続きで聞いたため判定不能） | — |
 | 2026-09-21 | claude.ai（Workers + Containers） | ○ | ○ | ○ | — | — |
+| 2026-10-10 | claude.ai **無料プラン**（来場者用 `/e/…`） | ○ | ○ | ○ | ○ | ○ |
