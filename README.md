@@ -113,3 +113,7 @@ aws s3 cp output/honhyo_2019-2025.parquet \
 [警察庁 交通事故統計情報のオープンデータ](https://www.npa.go.jp/publications/statistics/koutsuu/opendata/index_opendata.html)
 
 政府標準利用規約（第2.0版）に準拠。
+
+## ライセンス
+
+コードは [MIT License](LICENSE)。データは上記の出典の利用規約に従う。
