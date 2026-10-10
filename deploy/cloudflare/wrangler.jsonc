@@ -21,6 +21,7 @@
       "image": "./Dockerfile",
       "image_build_context": "../..",
       // lite(256MiB) では DuckDB が足りない見込み。basic = 1/4 vCPU, 1 GiB, 4 GB disk
+      // 発表会当日だけ standard-2 に上げる（README「40人の同時利用」）
       "instance_type": "basic",
       // MCP セッションはコンテナのメモリ上にあるので、1台に寄せる
       "max_instances": 1
