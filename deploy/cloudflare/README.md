@@ -67,6 +67,43 @@ Web アプリの入口は [docs/DESIGN_WEB.md](../../docs/DESIGN_WEB.md)。
   ほかのクライアントが繋がっていたのか、挙動が変わったのかは未確認。`wrangler deploy` し直すと
   ロールアウトでインスタンスが `inactive` になるので、コールドスタートはそれで測った
 
+## 40人の同時利用（2026-10-10、issue #32）
+
+`python probe.py load <URL> 40` で、40 セッションを 0.25 秒おきに張り、各セッションで
+`seikatsu_dashboard` → `aggregate`（県別）→ `accident_map` ×2（県・半径1km）を**間を空けずに**呼んだ。
+人が考える時間を入れていないので最悪の場合の数字。手元は Docker の `--cpus` / `--memory` で各サイズを模した。
+
+| | エラー | dashboard p50 | aggregate p50 | map p50（p95） | メモリ最大 |
+|---|---:|---:|---:|---:|---:|
+| **basic・Cloudflare 実機** | 1 セッション※ | 38.6 s | 8.6 s | 81.7 s（89.7 s） | — |
+| basic・手元（1/4 vCPU・1 GiB） | 0 | 40.1 s | 10.1 s | 79.7 s（85.1 s） | 753 MiB |
+| standard-1・手元（1/2 vCPU・4 GiB） | 0 | 20.8 s | 8.1 s | 31.3 s（50.0 s） | 869 MiB |
+| standard-2・手元（1 vCPU・6 GiB） | 0 | 12.3 s | 3.7 s | 16.7 s（25.7 s） | 836 MiB |
+
+※ 手元の Python が TLS 証明書の検証に失敗したもの（`CERTIFICATE_VERIFY_FAILED`）。サーバー側の失敗ではない。
+
+- **落ちない。** どのサイズでもエラー・OOM は 0。basic はメモリ 1 GiB の約75%まで使う
+- **遅さは CPU で決まる。** vCPU を4倍にすると待ち時間はほぼ 1/4。実機の basic は手元の basic とほぼ同じ速さで、
+  1人ずつの計測のような「実機のほうが速い」は同時アクセスでは成り立たない
+- **当日は standard-2 に上げる。** 起きている間 約 $0.06/時（basic は約 $0.01/時）。上げたまま1か月起きていると約 $40 になるので、終わったら戻す。
+  `max_instances` は 1 のまま（MCP セッションがコンテナのメモリ上にあるため、台数ではなくサイズで増やす）
+
+### 当日の手順
+
+```bash
+cd deploy/cloudflare
+# 前日: wrangler.jsonc の instance_type を "standard-2" にして
+npx wrangler deploy
+python probe.py load https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/<EVENT_PATH>/mcp 40   # 実機で上の表と比べる
+
+# 開始30分前: 起こしておく（寝ていると最初の1人が十数秒待つ）
+python probe.py cold https://npa-traffic-accident-mcp.shi-works-worker.workers.dev/e/<EVENT_PATH>/mcp
+
+# 終わったら: instance_type を "basic" に戻して
+npx wrangler deploy
+npx wrangler containers info <コンテナID>   # max_instances と vcpu・memory を確かめる
+```
+
 ## 課金とスリープ（実測 2026-09-21）
 
 Workers Paid は $5/月。そこに **basic インスタンスが起きている時間**の従量が乗る。
