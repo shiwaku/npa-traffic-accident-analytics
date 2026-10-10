@@ -17,6 +17,11 @@
 
 （2026-10 時点。条件は [Anthropic のヘルプ](https://support.claude.com/en/articles/11175166-getting-started-with-connectors-on-claude-ai) に従う）
 
+**ChatGPT の無料プランでは使えません。** 外部の MCP サーバーを追加する「開発者モード」は
+Business / Enterprise / Edu（管理者が有効にする）と Pro（読み取りのみ）が対象で、無料・Plus は対象外
+（[OpenAI のヘルプ](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)、2026-10 時点）。
+当日は claude.ai を使ってください。
+
 ## 2. 追加のしかた
 
 1. claude.ai を開き、**設定 → コネクタ**（Settings → Connectors）
