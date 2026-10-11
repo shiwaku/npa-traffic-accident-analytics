@@ -750,7 +750,9 @@ def accident_map_tool(
                  "party_age": party_age, "party_type": party_type, "party_scope": party_scope,
                  "accident_type": accident_type, "day_night": day_night,
                  "fatal_only": fatal_only, "zone30_only": zone30_only,
-                 "max_points": max_points},
+                 "max_points": max_points,
+                 # ビューの切り替えボタンは args を丸ごと送り返して呼び直す。ここに無いと半径の絞り込みが外れる
+                 "center_lat": center_lat, "center_lon": center_lon, "radius_m": radius_m},
         "seikatsu_choices": definitions.seikatsu_choices(),
         "counts": {"該当": matched, "描画": len(points), "抽出": sampled, "座標なし": no_coord},
         "fields": ["lon", "lat", "年", "死亡", "事故類型", "種別A", "種別B",
