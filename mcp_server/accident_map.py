@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pathlib
 
-from mcp.server.apps import ResourceCsp
+from mcp.server.apps import ResourceCsp, ResourcePermissions
 
 RESOURCE_URI = "ui://npa-traffic-accident/accident-map.html"
 
@@ -27,6 +27,10 @@ _GSI_DOMAINS = [
 ]
 
 CSP = ResourceCsp(connectDomains=_GSI_DOMAINS, resourceDomains=_GSI_DOMAINS)
+
+# 「現在地」ボタン(#74 の試作)のために位置情報を要求する。ホストが iframe の
+# Permissions Policy に geolocation を足すかどうかはホスト次第で、許さなければボタンは失敗する
+PERMISSIONS = ResourcePermissions(geolocation={})
 
 _BUILT = pathlib.Path(__file__).with_name("app") / "dist" / "map-app.html"
 
