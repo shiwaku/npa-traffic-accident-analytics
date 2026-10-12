@@ -258,14 +258,25 @@ async function recall(patch: Record<string, unknown>): Promise<void> {
   for (const b of seikatsuButtons()) b.disabled = true;
   fatalEl.disabled = true;
   try {
-    apply(await app.callServerTool({ name: "accident_map", arguments: { ...state.args, ...patch } }));
+    const result = await app.callServerTool({ name: "accident_map", arguments: { ...state.args, ...patch } });
+    // 0件などのツールエラーは例外ではなく isError で返る。apply に渡すと何も描かずに固まる
+    if (result.isError) throw new Error(errorText(result));
+    apply(result);
   } catch (e) {
     errEl.textContent = "再集計に失敗した: " + (e instanceof Error ? e.message : String(e));
     errEl.hidden = false;
     mainEl.classList.remove("busy");
     for (const b of seikatsuButtons()) b.disabled = false;
+    // 画面は前の結果のままなので、チェックも前の状態に戻す
+    fatalEl.checked = state.args.fatal_only;
     fatalEl.disabled = false;
   }
+}
+
+function errorText(result: CallToolResult): string {
+  return result.content
+    .map((c) => (c.type === "text" ? c.text : ""))
+    .join(" ").trim() || "サーバーがエラーを返した";
 }
 
 // ボタンは描画のたびに作り直すので、クリックは親で受ける
@@ -367,7 +378,12 @@ function handleHostContextChanged(ctx: McpUiHostContext): void {
 const app = new App({ name: "npa-accident-map", version: "1.0.0" });
 
 // 2. ハンドラは connect() の前に全部登録する
-app.ontoolresult = apply;
+app.ontoolresult = (result) => {
+  if (!result.isError) return apply(result);
+  errEl.textContent = errorText(result);
+  errEl.hidden = false;
+  mainEl.classList.remove("busy");
+};
 app.ontoolinput = () => { mainEl.classList.add("busy"); };
 app.ontoolcancelled = (params) => {
   errEl.textContent = "集計が中断された: " + params.reason;
