@@ -244,9 +244,12 @@ claude.ai / Claude Desktop / Claude Code でこのサーバーを有効にして
 
 事故現場や巡回先で、スマホに話しかけて**その場所の過去の事故**を見る使い方。
 
-> **現在地の自動取得はまだ動かない（[#74](https://github.com/shiwaku/npa-traffic-accident-analytics/issues/74) で対応予定）。**
-> それまでは「現在地の」の代わりに緯度経度を添えて聞く（例:「緯度 [35.xxxx]、経度 [139.xxxx] の半径100mで…」）。
-> 地名・交差点名から座標を引くのも未対応（[#67](https://github.com/shiwaku/npa-traffic-accident-analytics/issues/67)）。
+> **現在地を取れるかはホストによる。** Android の claude.ai アプリでは、「現在地から…」と聞くと
+> アプリが位置情報の許可を求め、取った現在地を Claude がそのまま地図の中心に使う（2026-10-12 確認、
+> [#74](https://github.com/shiwaku/npa-traffic-accident-analytics/issues/74)）。
+> iPhone のアプリ・ブラウザ版 claude.ai・Claude Desktop は未確認。現在地を取れないホストでは、
+> 「現在地の」の代わりに緯度経度を添えて聞く（例:「緯度 [35.xxxx]、経度 [139.xxxx] の半径100mで…」）。
+> 地名・交差点名から座標を引くのは未対応（[#67](https://github.com/shiwaku/npa-traffic-accident-analytics/issues/67)）。
 > 下の問いの数字は地点ごとに違うので、ほかの節のような実測値は載せていない。
 
 ### 6-1. まず全体をつかむ
