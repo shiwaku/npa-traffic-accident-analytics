@@ -4,6 +4,9 @@
 :root {
   --pt-fatal: light-dark(#c62f1c, #ff7a63);
   --pt-injury: light-dark(#1d5fa8, #6fb0f0);
+  /* 半径指定の円は無彩色。中心点は事故の赤・青とも地図記号とも取り違えない橙 */
+  --pt-center: light-dark(#1f1f1f, #f0f0f0);
+  --pt-center-dot: light-dark(#e8890c, #f5a524);
 }
 
 .head-right { display: flex; align-items: center; gap: 10px; }
@@ -66,6 +69,7 @@
 .legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
 .dot.fatal { background: var(--pt-fatal); }
 .dot.injury { background: var(--pt-injury); }
+.dot.center { background: var(--pt-center-dot); box-shadow: 0 0 0 1.5px var(--pt-center); }
 
 /* MapLibre のUIをホストのテーマに合わせる */
 .maplibregl-ctrl-group { background: var(--color-background-primary); }
