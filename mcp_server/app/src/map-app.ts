@@ -282,9 +282,24 @@ function apply(result: CallToolResult): void {
   } else if (map.isStyleLoaded()) addLayers();
   else map.once("idle", addLayers);
 
-  const [w, s, e, n] = d.bounds;
-  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: d.max_zoom ?? 15, duration: 0 });
+  userMoved = false;
+  fitToResult();
 }
+
+/**
+ * 返ってきた範囲に合わせる。描いた直後はホストが iframe の大きさをまだ決めていないことがあり、
+ * そのときの枠で合わせると、枠が広がったあとに寄りすぎて半径の円がはみ出す。
+ * そこで利用者が地図を動かすまでは、枠の大きさが変わるたびに合わせ直す。
+ */
+let userMoved = false;
+function fitToResult(): void {
+  if (!state) return;
+  const [w, s, e, n] = state.bounds;
+  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: state.max_zoom ?? 15, duration: 0 });
+}
+map.on("resize", () => { if (!userMoved) fitToResult(); });
+// originalEvent があるのは利用者の操作だけ。fitBounds 自身の移動では立たない
+map.on("movestart", (e) => { if ((e as { originalEvent?: Event }).originalEvent) userMoved = true; });
 
 function popupHtml(props: Record<string, unknown>): string {
   const L = state!.legend;
