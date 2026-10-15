@@ -62,6 +62,11 @@ const seikatsuButtons = () => Array.from(seikatsuSwitch.querySelectorAll<HTMLBut
 const nf = new Intl.NumberFormat("ja-JP");
 const SRC = "accidents";
 const LAYER = "accidents-circle";
+/** 半径指定の中心点と円。中心が無い呼び出しでは空にする */
+const CENTER_SRC = "center";
+const RING_LAYER = "center-ring";
+const DOT_LAYER = "center-dot";
+const centerLegendEl = $("center-legend");
 
 let state: Payload | null = null;
 let theme: "light" | "dark" = "light";
@@ -119,6 +124,33 @@ function toGeoJson(points: Point[]): FeatureCollection {
 }
 
 /**
+ * 半径指定の中心点と、半径の円（64角形）。地点を指定して聞いたのに、どこを中心に
+ * 数えたかが地図に出ないと、点の散らばりから中心を推し量るしかなくなる。
+ */
+function centerGeoJson(): FeatureCollection {
+  const a = state?.args;
+  const lat = a?.center_lat, lon = a?.center_lon, r = a?.radius_m;
+  if (typeof lat !== "number" || typeof lon !== "number" || typeof r !== "number") {
+    return { type: "FeatureCollection", features: [] };
+  }
+  // サーバーの _radius_sql と同じ平面近似（_M_PER_DEG_LAT / _M_PER_DEG_LON）
+  const dLat = r / 110540;
+  const dLon = r / (111320 * Math.cos((lat * Math.PI) / 180));
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    ring.push([lon + dLon * Math.cos(t), lat + dLat * Math.sin(t)]);
+  }
+  return {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} },
+      { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: {} },
+    ],
+  };
+}
+
+/**
  * 点のレイヤーを貼る。背景スタイルを差し替えると全レイヤーが消えるので、
  * テーマ切替のたびに呼び直す。1点=1事故で、重なりの濃さは密度であって件数の目盛りではない。
  */
@@ -127,7 +159,38 @@ function addLayers(): void {
   if (!map.getSource(SRC)) {
     map.addSource(SRC, { type: "geojson", data: toGeoJson(state.points) });
   }
-  if (map.getLayer(LAYER)) return;
+  if (!map.getSource(CENTER_SRC)) {
+    map.addSource(CENTER_SRC, { type: "geojson", data: centerGeoJson() });
+  }
+  if (!map.getLayer(LAYER)) addPointLayer();
+  const center = cssColor("--pt-center", "#1f1f1f");
+  // 円は事故の点の下、中心点は上に描く
+  if (!map.getLayer(RING_LAYER)) {
+    map.addLayer({
+      id: RING_LAYER,
+      type: "line",
+      source: CENTER_SRC,
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "line-color": center, "line-width": 1.5, "line-dasharray": [3, 2], "line-opacity": 0.8 },
+    }, LAYER);
+  }
+  if (!map.getLayer(DOT_LAYER)) {
+    map.addLayer({
+      id: DOT_LAYER,
+      type: "circle",
+      source: CENTER_SRC,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": 8,
+        "circle-color": cssColor("--pt-center-dot", "#e8890c"),
+        "circle-stroke-width": 2,
+        "circle-stroke-color": center,
+      },
+    });
+  }
+}
+
+function addPointLayer(): void {
   map.addLayer({
     id: LAYER,
     type: "circle",
@@ -211,14 +274,32 @@ function apply(result: CallToolResult): void {
   errEl.hidden = true;
   mainEl.classList.remove("busy");
 
+  centerLegendEl.hidden = typeof d.args.radius_m !== "number";
   const src = map.getSource(SRC) as maplibregl.GeoJSONSource | undefined;
-  if (src) src.setData(toGeoJson(d.points));
-  else if (map.isStyleLoaded()) addLayers();
+  if (src) {
+    src.setData(toGeoJson(d.points));
+    (map.getSource(CENTER_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(centerGeoJson());
+  } else if (map.isStyleLoaded()) addLayers();
   else map.once("idle", addLayers);
 
-  const [w, s, e, n] = d.bounds;
-  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: d.max_zoom ?? 15, duration: 0 });
+  userMoved = false;
+  fitToResult();
 }
+
+/**
+ * 返ってきた範囲に合わせる。描いた直後はホストが iframe の大きさをまだ決めていないことがあり、
+ * そのときの枠で合わせると、枠が広がったあとに寄りすぎて半径の円がはみ出す。
+ * そこで利用者が地図を動かすまでは、枠の大きさが変わるたびに合わせ直す。
+ */
+let userMoved = false;
+function fitToResult(): void {
+  if (!state) return;
+  const [w, s, e, n] = state.bounds;
+  map.fitBounds([[w, s], [e, n]], { padding: 36, maxZoom: state.max_zoom ?? 15, duration: 0 });
+}
+map.on("resize", () => { if (!userMoved) fitToResult(); });
+// originalEvent があるのは利用者の操作だけ。fitBounds 自身の移動では立たない
+map.on("movestart", (e) => { if ((e as { originalEvent?: Event }).originalEvent) userMoved = true; });
 
 function popupHtml(props: Record<string, unknown>): string {
   const L = state!.legend;
