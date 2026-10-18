@@ -288,8 +288,8 @@ npa-traffic-accident-analytics/
 1. **利用者に Claude アカウントが要る。** claude.ai・Claude Code のどちらでもよいが、
    Claude を持たない人はブラウザだけでは使えない（10.3）
 2. **Artifact は静的スナップショット。** 公開後に条件を変えることはできない（6.2）
-3. **ホスティングが未確定。** 現在は quick tunnel のため URL が毎回変わり、
-   このPCが動いている間しか使えない（[HOW_IT_WORKS.md](HOW_IT_WORKS.md) 5章）
+3. **コンテナは1台。** Cloudflare Workers + Containers で常時公開しているが、
+   同時に大勢が使うと遅くなる（[HOW_IT_WORKS.md](HOW_IT_WORKS.md) 7章）
 4. **前段リポジトリへの依存。** 新年次のデータは converter 側の変換が先に要る
 
 ---
