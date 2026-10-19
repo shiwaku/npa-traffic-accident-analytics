@@ -132,7 +132,9 @@ CPU をずっと使い切ったときの上限を「CPU 上限込み」に書い
 
 - 寝ている間は 0。これとは別に Workers Paid の $5/月がかかる
 - 発表会の数時間だけ `standard-2` にするなら、CPU を使い切っても1時間あたり約 $0.13
-- ディスクが SSD かどうかは公式ページに書かれていない
+- ディスクが SSD かどうかは公式ページに書かれていない。ディスクは使い捨てで、寝ると消える
+  （次に起きるとイメージから作り直したディスクで始まる。[Architecture](https://developers.cloudflare.com/containers/platform-details/architecture/)）。
+  このサーバーはディスクに何も保存せず、データは毎回 R2 から読むので影響はない
 
 **肝心なのは「いつ寝るか」。** `sleepAfter = "10m"` は正しく動くが、
 **claude.ai のタブを開いている間はコンテナが寝ない。** MCP の streamable-http は
