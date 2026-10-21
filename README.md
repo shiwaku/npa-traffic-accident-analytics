@@ -28,7 +28,7 @@ Cloudflare R2 / shi-works.com
 | Claude Desktop / Claude Code | 手元のPCで stdio。常駐しない | httpfs で HTTP Range（約4MB） | [SETUP_WINDOWS](docs/SETUP_WINDOWS.md) / [SETUP_MAC](docs/SETUP_MAC.md) |
 | claude.ai | Cloudflare Containers。使うと起き、10分使わなければ寝る | 起動時に parquet を落としてローカル読み | [deploy/cloudflare/](deploy/cloudflare/README.md) |
 
-地図（`accident_map`）が一度に描ける点は `max_points`（既定 5,000・上限 20,000）まで。
+地図（`accident_map`）が一度に描ける点は `max_points`（既定 10,000・上限 20,000）まで。
 超えた分は間引かれるので、**描画件数を事故件数と読まないこと**。件数は `counts.該当` を見る。
 
 ## データ

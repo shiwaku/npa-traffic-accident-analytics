@@ -630,7 +630,7 @@ def _map_summary_md(p: dict[str, Any]) -> str:
 条件の指定は aggregate と同じコード値で行う（party_age, party_type, seikatsu ほか）。
 「どこ」を問われたときに使い、「いくつ・どう増えた」は aggregate で数えること。
 
-点の数が max_points（既定 5,000、上限 20,000）を超えると間引いて描く。間引きは
+点の数が max_points（既定 10,000、上限 20,000）を超えると間引いて描く。間引きは
 内容のハッシュ順なので同じ条件なら同じ点が出るが、**描画件数を事故件数として
 語らないこと**。件数は返り値の counts.該当 を使う。もっと多くの点を描きたい
 ときは max_points を上げる。上限を超える分は条件で絞り込むしかない。
@@ -663,7 +663,7 @@ def accident_map_tool(
     center_lat: float | None = None,
     center_lon: float | None = None,
     radius_m: float | None = None,
-    max_points: int = 5000,
+    max_points: int = 10000,
 ) -> CallToolResult:
     c = con()
     if year_from > year_to:
