@@ -370,57 +370,6 @@ seikatsuSwitch.addEventListener("click", (e) => {
 });
 fatalEl.addEventListener("change", () => void recall({ fatal_only: fatalEl.checked }));
 
-/**
- * #74 の試作: 端末の現在地を取り、その半径300mで呼び直す。
- *
- * ホストが iframe に位置情報を許すかは分かっていない（accident_map.py で geolocation を
- * 要求している）。確かめるのが目的なので、許可の状態・取れた座標・失敗の理由をすべて画面に出す。
- */
-const locateEl = $<HTMLButtonElement>("locate");
-const geoEl = $("geo");
-const GEO_ERR: Record<number, string> = { 1: "許可されていない", 2: "位置を特定できない", 3: "時間切れ" };
-
-async function geoDiagnostics(): Promise<string[]> {
-  const lines: string[] = [];
-  const granted = app.getHostCapabilities()?.sandbox?.permissions;
-  lines.push(`ホストが許可した権限: ${granted ? JSON.stringify(granted) : "申告なし"}`);
-  const policy = (document as Document & { permissionsPolicy?: { allowsFeature(f: string): boolean };
-    featurePolicy?: { allowsFeature(f: string): boolean } });
-  const pp = policy.permissionsPolicy ?? policy.featurePolicy;
-  lines.push(`iframe の Permissions Policy: ${pp ? (pp.allowsFeature("geolocation") ? "geolocation 可" : "geolocation 不可") : "判定できないブラウザ"}`);
-  try {
-    const st = await navigator.permissions.query({ name: "geolocation" });
-    lines.push(`ブラウザの許可状態: ${st.state}`);
-  } catch {
-    lines.push("ブラウザの許可状態: 取得できない");
-  }
-  return lines;
-}
-
-locateEl.addEventListener("click", async () => {
-  geoEl.hidden = false;
-  const diag = await geoDiagnostics();
-  geoEl.textContent = [...diag, "位置情報を取得中…"].join("\n");
-  if (!("geolocation" in navigator)) {
-    geoEl.textContent = [...diag, "失敗: このブラウザに位置情報の機能がない"].join("\n");
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const { latitude: lat, longitude: lon, accuracy } = pos.coords;
-      geoEl.textContent = [...diag,
-        `取得できた: 緯度 ${lat.toFixed(5)}、経度 ${lon.toFixed(5)}（誤差 約${Math.round(accuracy)}m）`].join("\n");
-      // 前の都道府県の絞り込みが残ると、現在地が県外のとき0件になる
-      void recall({ center_lat: lat, center_lon: lon, radius_m: 300, prefecture: null });
-    },
-    (err) => {
-      geoEl.textContent = [...diag,
-        `失敗: ${GEO_ERR[err.code] ?? "不明"}（code ${err.code}: ${err.message}）`].join("\n");
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
-  );
-});
-
 expandEl.addEventListener("click", async () => {
   const next = displayMode === "fullscreen" ? "inline" : "fullscreen";
   setDisplayMode((await app.requestDisplayMode({ mode: next })).mode);

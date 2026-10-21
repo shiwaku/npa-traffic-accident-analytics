@@ -214,7 +214,6 @@ iframe を持たないホスト（ターミナルの Claude Code）では画面�
 iframe はホストの CSP で外部通信を止められている。地図の画面だけは、
 背景の地理院 最適化ベクトルタイル（淡色）を読むために、リソースの `_meta.ui.csp` で
 `cyberjapandata.gsi.go.jp` と `gsi-cyberjapan.github.io` を宣言している（`mcp_server/accident_map.py`）。
-「現在地」ボタンのために位置情報の利用も要求しているが、許すかどうかはホスト次第。
 
 **4. 画面のボタンは、Claude を通さずにツールを呼び直す**
 
