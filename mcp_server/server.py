@@ -377,7 +377,6 @@ apps.add_html_resource(
     title="事故地点マップ",
     description="絞り込んだ事故の発生地点を地理院ベクトルタイル(淡色)の上に描く地図",
     csp=accident_map.CSP,
-    permissions=accident_map.PERMISSIONS,
     prefers_border=True,
 )
 
